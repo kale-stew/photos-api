@@ -4,13 +4,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-05-24",
   "compatibility_flags": ["nodejs_compat_v2"],
+  "account_id": "bb52c0e5f3a93fc72779915d7dc6982b",
 
   // D1 Database
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "photos-db",
-      "database_id": "REPLACE_WITH_DATABASE_ID",
+      "database_id": "cb953cd1-3de2-4eb1-9769-b1b1d817b59d",
       "migrations_dir": "migrations"
     }
   ],
