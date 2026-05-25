@@ -47,6 +47,12 @@ interface Photo {
   flickr_id: string | null;
   accent_color: string | null;
   source_url: string | null;
+  // Added in migration 0003
+  camera: string | null;
+  ai_caption: string | null;
+  ai_keywords: string | null;
+  ai_quality_score: number | null;
+  ai_processed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -382,6 +388,86 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           margin: 0 0 var(--space-sm);
           color: var(--color-text);
         }
+
+        /* Filter bar */
+        .filter-bar {
+          display: grid;
+          grid-template-columns: 1fr auto auto auto auto auto;
+          gap: var(--space-sm);
+          align-items: center;
+          margin-bottom: var(--space-xl);
+          background: var(--color-bg-card);
+          padding: var(--space-md);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-sm);
+        }
+        @media (max-width: 900px) {
+          .filter-bar {
+            grid-template-columns: 1fr 1fr;
+          }
+          .filter-search { grid-column: 1 / -1; }
+          .filter-dates { grid-column: 1 / -1; }
+        }
+        .filter-bar input,
+        .filter-bar select {
+          font-family: var(--font-body);
+          font-size: 0.85rem;
+          padding: var(--space-sm) var(--space-md);
+          border: 1px solid rgba(0,0,0,0.1);
+          border-radius: var(--radius-md);
+          background: var(--color-bg);
+          color: var(--color-text);
+        }
+        .filter-search {
+          min-width: 0;
+        }
+        .filter-btn {
+          background: var(--color-accent);
+          color: white;
+          border: none;
+          font-weight: 600;
+          cursor: pointer;
+          padding: var(--space-sm) var(--space-lg);
+          border-radius: var(--radius-md);
+          font-size: 0.85rem;
+        }
+        .filter-btn:hover {
+          background: #c42e00;
+        }
+        .filter-clear {
+          color: var(--color-text-muted);
+          text-decoration: none;
+          font-size: 0.85rem;
+          font-weight: 500;
+        }
+        .filter-clear:hover {
+          color: var(--color-accent);
+          text-decoration: underline;
+        }
+        .filter-dates {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          font-size: 0.85rem;
+          color: var(--color-text-muted);
+        }
+
+        /* Delete button */
+        .btn-danger {
+          background: #dc2626;
+          color: white;
+          border: none;
+          padding: var(--space-sm) var(--space-md);
+          border-radius: var(--radius-md);
+          font-weight: 600;
+          font-size: 0.9rem;
+          cursor: pointer;
+          font-family: var(--font-body);
+          width: 100%;
+        }
+        .btn-danger:hover {
+          background: #b91c1c;
+        }
       `}} />
     </head>
     <body>
@@ -545,12 +631,106 @@ app.get("/img/:photoId", async (c) => {
 app.get("/api/photos", async (c) => {
   const url = new URL(c.req.url);
   const site = url.searchParams.get("site");
+  const queryParam = url.searchParams.get("q");
 
   const limitParam = parseInt(url.searchParams.get("limit") || "50", 10);
   const limit = Number.isNaN(limitParam) ? 50 : Math.min(Math.max(1, limitParam), 100);
 
   const offsetParam = parseInt(url.searchParams.get("offset") || "0", 10);
   const offset = Number.isNaN(offsetParam) ? 0 : Math.max(0, offsetParam);
+
+  let result;
+  let meta: { limit: number; offset: number; count: number; query?: string };
+
+  // If search query provided, use FTS5 if available, otherwise fallback to LIKE
+  if (queryParam) {
+    // Try FTS5 first; if the virtual table doesn't exist or is empty, the query
+    // may return 0 results. Fall back to LIKE in that case.
+    let ftsSucceeded = false;
+    try {
+      const ftsQuery = queryParam
+        .replace(/[^\w\s]/g, " ") // strip special chars
+        .trim()
+        .split(/\s+/)
+        .map((term) => `"${term}"*`)
+        .join(" ");
+
+      let ftsSql = `SELECT p.* FROM photos p
+        JOIN photos_fts fts ON p.id = fts.id
+        WHERE fts.photos_fts MATCH ? AND p.exclude = 0`;
+      const ftsParams: (string | number)[] = [ftsQuery];
+
+      if (site) {
+        ftsSql += " AND (p.site = ? OR p.site = 'both')";
+        ftsParams.push(site);
+      }
+
+      ftsSql += " ORDER BY rank LIMIT ? OFFSET ?";
+      ftsParams.push(limit, offset);
+
+      result = await c.env.DB.prepare(ftsSql).bind(...ftsParams).all<Photo>();
+
+      if (result.results.length > 0) {
+        ftsSucceeded = true;
+        meta = { limit, offset, count: result.results.length, query: queryParam };
+      }
+    } catch {
+      // FTS5 unavailable or query malformed — will fall through to LIKE below
+    }
+
+    // Fallback to LIKE if FTS5 returned no results or failed
+    if (!ftsSucceeded) {
+      const searchPattern = `%${queryParam}%`;
+      let fallbackSql = `SELECT * FROM photos WHERE exclude = 0 AND (
+        title LIKE ? OR caption LIKE ? OR location LIKE ? OR tags LIKE ?
+        OR ai_caption LIKE ? OR ai_keywords LIKE ?
+      )`;
+      const fallbackParams: (string | number)[] = [
+        searchPattern, searchPattern, searchPattern, searchPattern,
+        searchPattern, searchPattern,
+      ];
+
+      if (site) {
+        fallbackSql += " AND (site = ? OR site = 'both')";
+        fallbackParams.push(site);
+      }
+
+      fallbackSql += " ORDER BY date DESC LIMIT ? OFFSET ?";
+      fallbackParams.push(limit, offset);
+
+      result = await c.env.DB.prepare(fallbackSql).bind(...fallbackParams).all<Photo>();
+
+      meta = { limit, offset, count: result.results.length, query: queryParam };
+    }
+  } else {
+    // No search query — standard list
+    let listSql = "SELECT * FROM photos WHERE exclude = 0";
+    const listParams: (string | number)[] = [];
+
+    if (site) {
+      listSql += " AND (site = ? OR site = 'both')";
+      listParams.push(site);
+    }
+
+    listSql += " ORDER BY date DESC LIMIT ? OFFSET ?";
+    listParams.push(limit, offset);
+
+    result = await c.env.DB.prepare(listSql).bind(...listParams).all<Photo>();
+
+    meta = { limit, offset, count: result.results.length };
+  }
+
+  return c.json({
+    photos: result.results,
+    meta,
+  });
+});
+
+// GET /api/photos/random — must be defined BEFORE /api/photos/:id
+app.get("/api/photos/random", async (c) => {
+  const url = new URL(c.req.url);
+  const site = url.searchParams.get("site");
+  const tag = url.searchParams.get("tag");
 
   let query = "SELECT * FROM photos WHERE exclude = 0";
   const params: (string | number)[] = [];
@@ -560,26 +740,49 @@ app.get("/api/photos", async (c) => {
     params.push(site);
   }
 
-  query += " ORDER BY date DESC LIMIT ? OFFSET ?";
-  params.push(limit, offset);
+  if (tag) {
+    query += " AND (tags LIKE ? OR ai_keywords LIKE ?)";
+    params.push(`%${tag}%`, `%${tag}%`);
+  }
 
-  const result = await c.env.DB.prepare(query).bind(...params).all<Photo>();
+  query += " ORDER BY RANDOM() LIMIT 1";
 
-  return c.json({
-    photos: result.results,
-    meta: { limit, offset, count: result.results.length },
-  });
+  const photo = await c.env.DB.prepare(query).bind(...params).first<Photo>();
+
+  if (!photo) return c.json({ error: "No photos found matching criteria" }, 404);
+  return c.json(photo);
 });
 
 // GET /api/photos/{id}
 app.get("/api/photos/:id", async (c) => {
   const id = c.req.param("id");
+  const include = c.req.query("include")?.split(",") || [];
+
   const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?")
     .bind(id)
     .first<Photo>();
 
   if (!photo) return c.json({ error: "Photo not found" }, 404);
-  return c.json(photo);
+
+  const result: Record<string, unknown> = { ...photo };
+
+  if (include.includes("exif")) {
+    const exif = await c.env.DB.prepare("SELECT * FROM photo_exif WHERE photo_id = ?")
+      .bind(id)
+      .first();
+    result.exif = exif || null;
+  }
+
+  if (include.includes("ai")) {
+    result.ai = {
+      caption: photo.ai_caption,
+      keywords: photo.ai_keywords,
+      quality_score: photo.ai_quality_score,
+      processed_at: photo.ai_processed_at,
+    };
+  }
+
+  return c.json(result);
 });
 
 // Redirect root to docs
@@ -595,21 +798,64 @@ app.get("/admin", async (c) => {
   const perPage = 50;
   const offset = (page - 1) * perPage;
 
-  const result = await c.env.DB.prepare(
-    "SELECT * FROM photos WHERE exclude = 0 ORDER BY date DESC LIMIT ? OFFSET ?"
-  )
-    .bind(perPage, offset)
-    .all<Photo>();
+  const q = url.searchParams.get("q") || "";
+  const site = url.searchParams.get("site") || "";
+  const dateFrom = url.searchParams.get("date_from") || "";
+  const dateTo = url.searchParams.get("date_to") || "";
+  const sort = url.searchParams.get("sort") || "date";
 
-  const countResult = await c.env.DB.prepare(
-    "SELECT COUNT(*) as total FROM photos WHERE exclude = 0"
-  ).first<{ total: number }>();
+  // Build dynamic SQL
+  const whereClauses: string[] = ["exclude = 0"];
+  const params: (string | number)[] = [];
+
+  if (q) {
+    whereClauses.push(
+      "(title LIKE ? OR caption LIKE ? OR location LIKE ? OR tags LIKE ? OR ai_caption LIKE ? OR ai_keywords LIKE ?)"
+    );
+    const pattern = `%${q}%`;
+    params.push(pattern, pattern, pattern, pattern, pattern, pattern);
+  }
+
+  if (site) {
+    whereClauses.push("(site = ? OR site = 'both')");
+    params.push(site);
+  }
+
+  if (dateFrom) {
+    whereClauses.push("date >= ?");
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    whereClauses.push("date <= ?");
+    params.push(dateTo);
+  }
+
+  const whereSql = whereClauses.join(" AND ");
+  const orderBy = sort === "created" ? "created_at DESC" : "date DESC";
+
+  const countSql = `SELECT COUNT(*) as total FROM photos WHERE ${whereSql}`;
+  const countResult = await c.env.DB.prepare(countSql)
+    .bind(...params)
+    .first<{ total: number }>();
+
+  const listSql = `SELECT * FROM photos WHERE ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  const result = await c.env.DB.prepare(listSql)
+    .bind(...params, perPage, offset)
+    .all<Photo>();
 
   const total = countResult?.total || 0;
   const totalPages = Math.ceil(total / perPage);
   const photos = result.results || [];
 
   const origin = url.origin;
+  const hasFilters = !!(q || site || dateFrom || dateTo || sort !== "date");
+
+  const makePageUrl = (p: number) => {
+    const u = new URL(c.req.url);
+    u.searchParams.set("page", String(p));
+    return u.pathname + u.search;
+  };
 
   return c.html(
     <AdminLayout title="photo grid">
@@ -618,10 +864,37 @@ app.get("/admin", async (c) => {
         <p>{total} photos · page {page} of {totalPages}</p>
       </div>
 
+      <form method="get" action="/admin" class="filter-bar">
+        <input
+          type="search"
+          name="q"
+          placeholder="search title, caption, tags..."
+          value={q}
+          class="filter-search"
+        />
+        <select name="site" class="filter-select">
+          <option value="">all sites</option>
+          <option value="climb-log" selected={site === "climb-log"}>climb-log</option>
+          <option value="kylieis-online" selected={site === "kylieis-online"}>kylieis-online</option>
+          <option value="both" selected={site === "both"}>both</option>
+        </select>
+        <div class="filter-dates">
+          <input type="date" name="date_from" value={dateFrom} title="from date" />
+          <span>to</span>
+          <input type="date" name="date_to" value={dateTo} title="to date" />
+        </div>
+        <select name="sort" class="filter-select">
+          <option value="date" selected={sort !== "created"}>photo date</option>
+          <option value="created" selected={sort === "created"}>date added</option>
+        </select>
+        <button type="submit" class="filter-btn">filter</button>
+        {hasFilters && <a href="/admin" class="filter-clear">clear</a>}
+      </form>
+
       {photos.length === 0 ? (
         <div class="empty-state">
           <h2>no photos found</h2>
-          <p>upload some photos to get started</p>
+          <p>try adjusting your filters</p>
         </div>
       ) : (
         <>
@@ -651,9 +924,9 @@ app.get("/admin", async (c) => {
 
           {totalPages > 1 && (
             <div class="pagination">
-              {page > 1 && <a href={`/admin?page=${page - 1}`}>← previous</a>}
+              {page > 1 && <a href={makePageUrl(page - 1)}>← previous</a>}
               <span>page {page} of {totalPages}</span>
-              {page < totalPages && <a href={`/admin?page=${page + 1}`}>next →</a>}
+              {page < totalPages && <a href={makePageUrl(page + 1)}>next →</a>}
             </div>
           )}
         </>
@@ -742,6 +1015,24 @@ app.get("/admin/photos/:id", async (c) => {
                 copy original url
               </button>
             </div>
+          </div>
+
+          <div class="detail-panel">
+            <h2>danger zone</h2>
+            <button
+              type="button"
+              class="btn-danger"
+              onclick={`if (confirm('Delete this photo permanently? This cannot be undone.')) {
+                fetch('/api/admin/photos/${photo.id}', { method: 'DELETE', credentials: 'same-origin' })
+                  .then(r => {
+                    if (r.ok) { window.location.href = '/admin'; }
+                    else { alert('Delete failed: ' + r.status); }
+                  })
+                  .catch(() => alert('Delete failed'));
+              }`}
+            >
+              delete photo
+            </button>
           </div>
         </div>
       </div>
@@ -1112,7 +1403,7 @@ function getOpenApiSpec(baseUrl: string): object {
       "/api/photos/{photoId}": {
         get: {
           summary: "Get photo metadata",
-          description: "Returns metadata for a single photo by ID.",
+          description: "Returns metadata for a single photo by ID. Optionally include EXIF and AI analysis sub-objects.",
           tags: ["Metadata"],
           parameters: [
             {
@@ -1122,6 +1413,14 @@ function getOpenApiSpec(baseUrl: string): object {
               schema: { type: "string" },
               description: "The photo ID",
               example: "517c0f03a93c",
+            },
+            {
+              name: "include",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description: "Comma-separated list of sub-objects to include: 'exif', 'ai'",
+              example: "exif,ai",
             },
           ],
           responses: {
@@ -1134,6 +1433,40 @@ function getOpenApiSpec(baseUrl: string): object {
               },
             },
             "404": { description: "Photo not found" },
+          },
+        },
+      },
+      "/api/photos/random": {
+        get: {
+          summary: "Get a random photo",
+          description: "Returns a single random photo. Optionally filter by site or tag.",
+          tags: ["Metadata"],
+          parameters: [
+            {
+              name: "site",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description: "Filter by site (e.g., 'climb-log')",
+            },
+            {
+              name: "tag",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description: "Filter by tag substring match",
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Random photo",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/Photo" },
+                },
+              },
+            },
+            "404": { description: "No photos found matching criteria" },
           },
         },
       },

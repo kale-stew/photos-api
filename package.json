@@ -17,7 +17,9 @@
     "migrate:notion": "npx tsx scripts/migrate/from-notion.ts",
     "migrate:climb-links": "npx tsx scripts/migrate/backfill-climb-links.ts",
     "migrate:map-peaks": "npx tsx scripts/migrate/map-centennial-photos.ts",
-    "generate:blurhash": "npx tsx scripts/migrate/generate-blurhash.ts"
+    "generate:blurhash": "npx tsx scripts/migrate/generate-blurhash.ts",
+    "backfill:ai": "npx tsx scripts/backfill-ai.ts",
+    "backfill:ai:dry": "npx tsx scripts/backfill-ai.ts --dry-run"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260524.1",
