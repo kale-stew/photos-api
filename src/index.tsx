@@ -714,8 +714,8 @@ app.get("/api/photos", async (c) => {
   const offsetParam = parseInt(url.searchParams.get("offset") || "0", 10);
   const offset = Number.isNaN(offsetParam) ? 0 : Math.max(0, offsetParam);
 
-  let result;
-  let meta: { limit: number; offset: number; count: number; query?: string };
+  let result: D1Result<Photo> | null = null;
+  let meta: { limit: number; offset: number; count: number; query?: string } = { limit, offset, count: 0 };
 
   // If search query provided, use FTS5 if available, otherwise fallback to LIKE
   if (queryParam) {
@@ -796,7 +796,7 @@ app.get("/api/photos", async (c) => {
   }
 
   return c.json({
-    photos: result.results,
+    photos: result?.results ?? [],
     meta,
   });
 });
