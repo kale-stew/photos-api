@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "photos-api",
-  "main": "src/index.ts",
+  "main": "src/index.tsx",
   "compatibility_date": "2025-05-24",
   "compatibility_flags": ["nodejs_compat_v2"],
   "account_id": "bb52c0e5f3a93fc72779915d7dc6982b",
