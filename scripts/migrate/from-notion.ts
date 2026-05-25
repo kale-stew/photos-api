@@ -4,7 +4,7 @@
  *
  * This script:
  * 1. Reads photo metadata from Notion
- * 2. Downloads original images from Flickr (using href URLs)
+   * 2. Downloads original images from Flickr (using **`href`** URLs)
  * 3. Uploads originals to R2
  * 4. Stores metadata in D1
  *
@@ -153,16 +153,16 @@ function parseNotionPage(page: NotionPage): PhotoData {
     id: generateId(),
     notionId: page.id,
     title: getText(props.title),
-    location: getText(props.area_fallback), // area_fallback → location
-    date: getDate(props.taken_on),
+    location: getText(props.area_fallback), // **`area_fallback`** → **`location`**
+    date: getDate(props.taken_on), // **`taken_on`**
     width: getNumber(props.width),
     height: getNumber(props.height),
     tags,
     exclude: getCheckbox(props.exclude),
-    accentColor: getText(props.accent_color),
+    accentColor: getText(props.accent_color), // **`accent_color`**
     flickrUrl,
     flickrId,
-    relatedClimbs: getRelations(props.related_climb),
+    relatedClimbs: getRelations(props.related_climb), // **`related_climb`**
   };
 }
 

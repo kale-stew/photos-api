@@ -3,7 +3,7 @@
  * Backfill photo_climb_links from Notion relation data
  *
  * This script:
- * 1. Queries Notion for all photos with related_climb relations
+ * 1. Queries Notion for all photos with **`related_climb`** relations
  * 2. Maps Notion page IDs to photo IDs in D1
  * 3. Inserts links into photo_climb_links table
  *

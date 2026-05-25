@@ -90,13 +90,13 @@ git push -u origin blog/photos-api-post
 The old Next.js site had a `/peak-list` page showing Centennial peaks as cards with cover photos.
 
 **Data source**: Notion database `d2c6ac15-7eb2-4fc4-99a4-691b6c853a0e` (Centennial Checklist)
-- Properties: `peak_name`, `elevation`, `rank`, `range`, `first_completed_on`, `img_url`
-- `img_url` contains Flickr `_b.jpg` URLs
+- Properties: **`peak_name`**, **`elevation`**, **`rank`**, **`range`**, **`first_completed_on`**, **`img_url`**
+- **`img_url`** contains Flickr `_b.jpg` URLs
 
 **Integration path**:
 1. Run `npm run migrate:map-peaks` to see current mapping status
 2. After main migration completes, re-run to get full mapping
-3. Update Centennial Checklist to store `photo_id` instead of (or alongside) `img_url`
+3. Update Centennial Checklist to store **`photo_id`** instead of (or alongside) **`img_url`**
 4. Add `/peak-list` route to kylieis.online or climb-log
 5. Fetch peak data from Notion, images from photos-api
 

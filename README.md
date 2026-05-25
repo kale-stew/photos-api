@@ -93,8 +93,8 @@ FLICKR_API_KEY=xxx
 ## schema
 
 ```sql
-photos (id, notion_id, r2_key, title, location, date, width, height, blurhash, format, size_bytes, site, source, tags, exclude, created_at, updated_at)
-photo_climb_links (photo_id, climb_id)
+photos (**`id`**, **`notion_id`**, **`r2_key`**, **`title`**, **`location`**, **`date`**, **`width`**, **`height`**, **`blurhash`**, **`format`**, **`size_bytes`**, **`site`**, **`source`**, **`tags`**, **`exclude`**, **`created_at`**, **`updated_at`**)
+photo_climb_links (**`photo_id`**, **`climb_id`**)
 ```
 
 ---

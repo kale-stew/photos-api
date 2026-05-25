@@ -4,7 +4,7 @@
  *
  * This script:
  * 1. Queries the Centennial Checklist Notion database
- * 2. Extracts Flickr photo IDs from img_url
+ * 2. Extracts Flickr photo IDs from **`img_url`**
  * 3. Looks up corresponding photos-api IDs via flickr_id
  * 4. Outputs a mapping for updating Notion or integrating with peak-list
  *
