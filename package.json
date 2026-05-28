@@ -1,0 +1,38 @@
+{
+  "name": "photos-api",
+  "version": "1.0.0",
+  "description": "Shared photo storage API for kylies.photos and kylieis.online",
+  "type": "module",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply photos-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply photos-db --remote",
+    "db:seed:local": "wrangler d1 execute photos-db --local --file=scripts/seed-test-data.sql",
+    "test": "npx tsx scripts/test-integration.ts",
+    "test:local": "API_URL=http://localhost:8787 npx tsx scripts/test-integration.ts",
+    "migrate:flickr": "npx tsx scripts/migrate/from-flickr.ts",
+    "migrate:cf-images": "npx tsx scripts/migrate/from-cf-images.ts",
+    "migrate:notion": "npx tsx scripts/migrate/from-notion.ts",
+    "migrate:climb-links": "npx tsx scripts/migrate/backfill-climb-links.ts",
+    "migrate:map-peaks": "npx tsx scripts/migrate/map-centennial-photos.ts",
+    "generate:blurhash": "npx tsx scripts/migrate/generate-blurhash.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260524.1",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "wrangler": "^4.14.0"
+  },
+  "optionalDependencies": {
+    "blurhash": "^2.0.5",
+    "sharp": "^0.33.0"
+  },
+  "dependencies": {
+    "hono": "^4.12.22",
+    "jose": "^6.2.3"
+  }
+}

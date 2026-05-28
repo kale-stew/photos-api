@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "photos-api",
+  "main": "src/index.tsx",
+  "compatibility_date": "2025-05-24",
+  "compatibility_flags": ["nodejs_compat_v2"],
+
+  // D1 Database
+  // NOTE: Create wrangler.local.jsonc with your account_id and database_id
+  // See .env.example for the format
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "photos-db",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // R2 Bucket
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS_BUCKET",
+      "bucket_name": "photos-bucket"
+    }
+  ],
+
+  // Images binding for transforms
+  "images": {
+    "binding": "IMAGES"
+  },
+
+  // Environment variables
+  "vars": {
+    "ALLOWED_WIDTHS": "200,400,800,1600",
+    // Cloudflare Access JWT verification (set these to enable signature verification)
+    // CF_ACCESS_TEAM_DOMAIN: "your-team.cloudflareaccess.com"
+    // CF_ACCESS_AUD: "your-application-audience-tag"
+  }
+}

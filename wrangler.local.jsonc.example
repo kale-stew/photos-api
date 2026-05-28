@@ -1,0 +1,15 @@
+{
+  // Copy this file to wrangler.local.jsonc and fill in your values
+  // wrangler.local.jsonc is gitignored and will override wrangler.jsonc
+  
+  "account_id": "your-cloudflare-account-id",
+  
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "photos-db",
+      "database_id": "your-d1-database-id",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
