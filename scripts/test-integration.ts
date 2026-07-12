@@ -50,6 +50,15 @@ async function run() {
     assert(typeof data.meta.offset === "number", "Expected meta.offset");
   });
 
+  await test("legacy list excludes non-public photos", async () => {
+    const res = await fetch(`${BASE_URL}/api/photos?limit=100`);
+    const data = await res.json() as { photos: { id: string }[] };
+    const ids = new Set(data.photos.map((photo) => photo.id));
+    assert(!ids.has("test-unlisted-photo"), "Unlisted photo appeared in legacy list");
+    assert(!ids.has("test-private-photo"), "Private photo appeared in legacy list");
+    assert(!ids.has("test-quarantined-photo"), "Quarantined photo appeared in legacy list");
+  });
+
   // Test 3: Pagination params work
   await test("GET /api/photos respects limit param", async () => {
     const res = await fetch(`${BASE_URL}/api/photos?limit=5`);
@@ -119,6 +128,92 @@ async function run() {
     const res = await fetch(`${BASE_URL}/api/photos?site=climb-log`);
     assert(res.ok, `Expected 200, got ${res.status}`);
     // Can't verify filtering without data, but at least it doesn't crash
+  });
+
+  await test("GET /api/collections/portfolio/photos returns a collection", async () => {
+    const res = await fetch(`${BASE_URL}/api/collections/portfolio/photos`);
+    assert(res.ok, `Expected 200, got ${res.status}`);
+    const data = await res.json() as { collection: { slug: string }; photos: unknown[] };
+    assert(data.collection.slug === "portfolio", "Expected portfolio collection");
+    assert(Array.isArray(data.photos), "Expected photos array");
+    assert(
+      (data.photos as { id: string }[]).some((photo) => photo.id === "test-photo-1"),
+      "Expected seeded portfolio member"
+    );
+  });
+
+  await test("GET /api/photos/:alias resolves a legacy alias", async () => {
+    const res = await fetch(`${BASE_URL}/api/photos/legacy-test-photo-1`);
+    assert(res.ok, `Expected 200, got ${res.status}`);
+    const data = await res.json() as { id: string };
+    assert(data.id === "test-photo-1", `Expected canonical ID, got ${data.id}`);
+  });
+
+  await test("private photo metadata is not public", async () => {
+    const res = await fetch(`${BASE_URL}/api/photos/test-private-photo`);
+    assert(res.status === 404, `Expected 404, got ${res.status}`);
+  });
+
+  await test("forged Access header does not expose private metadata", async () => {
+    const res = await fetch(`${BASE_URL}/api/photos/test-private-photo`, {
+      headers: { "Cf-Access-Jwt-Assertion": "not-a-jwt" },
+    });
+    assert(res.status === 404, `Expected 404, got ${res.status}`);
+  });
+
+  await test("forged Access header does not expose private image", async () => {
+    const res = await fetch(`${BASE_URL}/img/test-private-photo`, {
+      headers: { "Cf-Access-Jwt-Assertion": "not-a-jwt" },
+    });
+    assert(res.status === 404, `Expected 404, got ${res.status}`);
+  });
+
+  await test("forged Access header cannot call admin API", async () => {
+    const res = await fetch(`${BASE_URL}/api/admin/photos/test-photo-1`, {
+      method: "PATCH",
+      headers: {
+        "Cf-Access-Jwt-Assertion": "not-a-jwt",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Should not change" }),
+    });
+    assert(res.status === 403, `Expected 403, got ${res.status}`);
+  });
+
+  await test("admin UI denies access without valid configuration", async () => {
+    const res = await fetch(`${BASE_URL}/admin`, {
+      headers: { "Cf-Access-Jwt-Assertion": "not-a-jwt" },
+    });
+    assert(res.status === 403, `Expected 403, got ${res.status}`);
+  });
+
+  await test("unlisted photo metadata remains addressable", async () => {
+    const res = await fetch(`${BASE_URL}/api/photos/test-unlisted-photo`);
+    assert(res.ok, `Expected 200, got ${res.status}`);
+  });
+
+  await test("quarantined photo metadata is not public", async () => {
+    const res = await fetch(`${BASE_URL}/api/photos/test-quarantined-photo`);
+    assert(res.status === 404, `Expected 404, got ${res.status}`);
+  });
+
+  await test("public person returns assigned photos", async () => {
+    const res = await fetch(`${BASE_URL}/api/people/test-person/photos`);
+    assert(res.ok, `Expected 200, got ${res.status}`);
+    const data = await res.json() as { photos: { id: string }[] };
+    assert(data.photos.some((photo) => photo.id === "test-photo-1"), "Expected assigned photo");
+  });
+
+  await test("unlisted editorial collection is not publicly enumerable", async () => {
+    const res = await fetch(`${BASE_URL}/api/collections/kylies-photos-content/photos`);
+    assert(res.status === 404, `Expected 404, got ${res.status}`);
+  });
+
+  await test("OpenAPI documents collection and people endpoints", async () => {
+    const res = await fetch(`${BASE_URL}/openapi.json`);
+    const data = await res.json() as { paths: Record<string, unknown> };
+    assert("/api/collections/{slug}/photos" in data.paths, "Missing collection path");
+    assert("/api/people/{slug}/photos" in data.paths, "Missing people path");
   });
 
   // Summary

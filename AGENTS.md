@@ -34,7 +34,9 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 
 - Originals use `photos/{id}/original.{format}`.
 - Generated transforms use `photos/{id}/w{width}.webp`.
+- Keep `r2_key` unique across photos.
 - Preserve in-flight transform coalescing when changing image delivery.
+- Recheck active D1 state after transform writes; isolate-local in-flight tracking cannot coordinate deletion across Worker isolates.
 - Treat one-year immutable client caching as irreversible for clients that already fetched an image.
 - Quarantine metadata before deleting objects. For final deletion, inventory the complete prefix, delete and verify R2 objects, then remove D1 metadata.
 - Never suppress an R2 deletion failure or delete D1 first; the metadata is required to retry cleanup safely.
@@ -49,7 +51,8 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 ## Authentication
 
 - `/admin` and `/api/admin/*` are expected to sit behind Cloudflare Access.
-- The Worker checks for `Cf-Access-Jwt-Assertion`; it does not validate the signature itself.
+- The Worker validates `Cf-Access-Jwt-Assertion` against `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. Missing configuration denies access.
+- Configure `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` outside the repository before deploying admin changes.
 - Keep credentials in ignored local environment files. Never print or commit tokens.
 
 ## Commands
