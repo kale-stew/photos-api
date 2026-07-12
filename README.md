@@ -64,6 +64,8 @@ npm run dev
 
 ## deploy
 
+Configure the Worker runtime values `TEAM_DOMAIN` and `POLICY_AUD` outside the repository before deployment. `TEAM_DOMAIN` must be the full origin, such as `https://team.cloudflareaccess.com`. Admin routes deny access when either value is missing or invalid and validate Access JWTs against both values.
+
 ```bash
 npm run db:migrate:remote
 npm run deploy

@@ -12,13 +12,14 @@
  *   GET /admin                     - Photo grid
  *   GET /admin/photos/{id}         - Photo detail view
  *   PATCH /api/admin/photos/{id}   - Edit photo metadata
- *   DELETE /api/admin/photos/{id}  - Delete photo
+ *   DELETE /api/admin/photos/{id}  - Validate deletion eligibility; never deletes directly
  *   POST /api/admin/resize         - Custom resize
  *   POST /api/admin/upload         - Upload new photo
  */
 
-import { Hono } from "hono";
+import { Hono, type Context, type Next } from "hono";
 import type { FC } from "hono/jsx";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -44,6 +45,8 @@ interface Photo {
   source: string | null;
   tags: string | null;
   exclude: number;
+  status: "active" | "quarantined";
+  visibility: "public" | "unlisted" | "private";
   flickr_id: string | null;
   accent_color: string | null;
   source_url: string | null;
@@ -406,17 +409,59 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
 
 // ============ JWT VALIDATION MIDDLEWARE ============
 
-async function verifyAccessJWT(request: Request): Promise<boolean> {
+type AppEnv = Env & {
+  TEAM_DOMAIN?: string;
+  POLICY_AUD?: string;
+};
+
+const accessJwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+async function verifyAccessJWT(request: Request, env: AppEnv): Promise<boolean> {
   const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
-  if (!jwt) return false;
-  // Cloudflare Access validates at the edge. This is defense-in-depth.
-  // In production, you could verify the JWT signature here with jose.
-  return true;
+  if (!jwt || !env.TEAM_DOMAIN || !env.POLICY_AUD) return false;
+
+  try {
+    const issuer = new URL(env.TEAM_DOMAIN).origin;
+    let jwks = accessJwks.get(issuer);
+    if (!jwks) {
+      jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
+      accessJwks.set(issuer, jwks);
+    }
+    await jwtVerify(jwt, jwks, { issuer, audience: env.POLICY_AUD });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ============ APP SETUP ============
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: AppEnv }>();
+
+async function resolvePhoto(
+  db: D1Database,
+  identifier: string
+): Promise<Photo | null> {
+  const canonical = await db.prepare(`
+    SELECT * FROM photos
+    WHERE id = ? AND status = 'active' AND visibility IN ('public', 'unlisted')
+  `).bind(identifier).first<Photo>();
+  if (canonical) return canonical;
+
+  return db.prepare(`
+    SELECT p.* FROM photos p
+    JOIN photo_aliases a ON a.photo_id = p.id
+    WHERE a.alias = ? AND p.status = 'active' AND p.visibility IN ('public', 'unlisted')
+    LIMIT 1
+  `).bind(identifier).first<Photo>();
+}
+
+async function isPhotoActive(db: D1Database, photoId: string): Promise<boolean> {
+  const row = await db.prepare(
+    "SELECT 1 AS active FROM photos WHERE id = ? AND status = 'active'"
+  ).bind(photoId).first<{ active: number }>();
+  return row?.active === 1;
+}
 
 // CORS for public API routes
 app.use("/api/*", async (c, next) => {
@@ -427,14 +472,16 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 
-// Admin API routes require JWT validation
-app.use("/api/admin/*", async (c, next) => {
-  const jwt = c.req.header("Cf-Access-Jwt-Assertion");
-  if (!jwt) {
+const requireAccess = async (c: Context<{ Bindings: AppEnv }>, next: Next) => {
+  if (!(await verifyAccessJWT(c.req.raw, c.env))) {
     return c.json({ error: "Unauthorized" }, 403);
   }
   await next();
-});
+};
+
+app.use("/admin", requireAccess);
+app.use("/admin/*", requireAccess);
+app.use("/api/admin/*", requireAccess);
 
 // ============ PUBLIC API ROUTES (existing) ============
 
@@ -485,9 +532,7 @@ app.get("/img/:photoId", async (c) => {
 
   if (!photoId) return c.text("Missing photo ID", 400);
 
-  const photo = await env.DB.prepare("SELECT * FROM photos WHERE id = ?")
-    .bind(photoId)
-    .first<Photo>();
+  const photo = await resolvePhoto(env.DB, photoId);
 
   if (!photo) return c.text("Photo not found", 404);
 
@@ -552,7 +597,7 @@ app.get("/api/photos", async (c) => {
   const offsetParam = parseInt(url.searchParams.get("offset") || "0", 10);
   const offset = Number.isNaN(offsetParam) ? 0 : Math.max(0, offsetParam);
 
-  let query = "SELECT * FROM photos WHERE exclude = 0";
+  let query = "SELECT * FROM photos WHERE exclude = 0 AND status = 'active' AND visibility = 'public'";
   const params: (string | number)[] = [];
 
   if (site) {
@@ -571,12 +616,72 @@ app.get("/api/photos", async (c) => {
   });
 });
 
-// GET /api/photos/{id}
+// GET /api/collections/{slug}/photos
+app.get("/api/collections/:slug/photos", async (c) => {
+  const slug = c.req.param("slug");
+  const collection = await c.env.DB.prepare(
+    "SELECT slug, title, description FROM collections WHERE slug = ? AND is_public = 1"
+  ).bind(slug).first<{ slug: string; title: string; description: string | null }>();
+
+  if (!collection) return c.json({ error: "Collection not found" }, 404);
+
+  const limitParam = parseInt(c.req.query("limit") || "50", 10);
+  const limit = Number.isNaN(limitParam) ? 50 : Math.min(Math.max(1, limitParam), 100);
+  const offsetParam = parseInt(c.req.query("offset") || "0", 10);
+  const offset = Number.isNaN(offsetParam) ? 0 : Math.max(0, offsetParam);
+
+  const result = await c.env.DB.prepare(`
+    SELECT p.* FROM photos p
+    JOIN photo_collections pc ON pc.photo_id = p.id
+    WHERE pc.collection_slug = ?
+      AND p.status = 'active'
+      AND p.visibility = 'public'
+    ORDER BY pc.position IS NULL, pc.position, p.date DESC
+    LIMIT ? OFFSET ?
+  `).bind(slug, limit, offset).all<Photo>();
+
+  return c.json({
+    collection,
+    photos: result.results,
+    meta: { limit, offset, count: result.results.length },
+  });
+});
+
+// GET /api/people/{slug}/photos
+app.get("/api/people/:slug/photos", async (c) => {
+  const slug = c.req.param("slug");
+  const person = await c.env.DB.prepare(
+    "SELECT slug, display_name FROM people WHERE slug = ? AND is_public = 1"
+  ).bind(slug).first<{ slug: string; display_name: string }>();
+
+  if (!person) return c.json({ error: "Person not found" }, 404);
+
+  const limitParam = parseInt(c.req.query("limit") || "50", 10);
+  const limit = Number.isNaN(limitParam) ? 50 : Math.min(Math.max(1, limitParam), 100);
+  const offsetParam = parseInt(c.req.query("offset") || "0", 10);
+  const offset = Number.isNaN(offsetParam) ? 0 : Math.max(0, offsetParam);
+
+  const result = await c.env.DB.prepare(`
+    SELECT p.* FROM photos p
+    JOIN photo_people pp ON pp.photo_id = p.id
+    WHERE pp.person_slug = ?
+      AND p.status = 'active'
+      AND p.visibility = 'public'
+    ORDER BY pp.position IS NULL, pp.position, p.date DESC
+    LIMIT ? OFFSET ?
+  `).bind(slug, limit, offset).all<Photo>();
+
+  return c.json({
+    person,
+    photos: result.results,
+    meta: { limit, offset, count: result.results.length },
+  });
+});
+
+// GET /api/photos/{id-or-alias}
 app.get("/api/photos/:id", async (c) => {
   const id = c.req.param("id");
-  const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?")
-    .bind(id)
-    .first<Photo>();
+  const photo = await resolvePhoto(c.env.DB, id);
 
   if (!photo) return c.json({ error: "Photo not found" }, 404);
   return c.json(photo);
@@ -756,7 +861,10 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
 
-  const allowedFields = ["title", "location", "date", "tags", "site", "exclude", "caption"];
+  const allowedFields = [
+    "title", "location", "date", "tags", "site", "exclude", "caption",
+    "status", "visibility",
+  ];
   const updates: string[] = [];
 
   for (const field of allowedFields) {
@@ -765,6 +873,12 @@ app.patch("/api/admin/photos/:id", async (c) => {
       if (field === "exclude") {
         updates.push(`${field} = ${value ? 1 : 0}`);
       } else {
+        if (field === "status" && !["active", "quarantined"].includes(value)) {
+          return c.json({ error: "Invalid status" }, 400);
+        }
+        if (field === "visibility" && !["public", "unlisted", "private"].includes(value)) {
+          return c.json({ error: "Invalid visibility" }, 400);
+        }
         const escaped = String(value).replace(/'/g, "''");
         updates.push(`${field} = '${escaped}'`);
       }
@@ -780,7 +894,10 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const sql = `UPDATE photos SET ${updates.join(", ")} WHERE id = '${id.replace(/'/g, "''")}'`;
 
   try {
-    await c.env.DB.prepare(sql).run();
+    const update = await c.env.DB.prepare(sql).run();
+    if (update.meta.changes !== 1) {
+      return c.json({ error: "Photo not found" }, 404);
+    }
     const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?")
       .bind(id)
       .first<Photo>();
@@ -799,21 +916,25 @@ app.delete("/api/admin/photos/:id", async (c) => {
 
   if (!photo) return c.json({ error: "Photo not found" }, 404);
 
-  // Delete from D1
-  await c.env.DB.prepare("DELETE FROM photos WHERE id = ?").bind(id).run();
-
-  // Delete from R2 (delete all objects under photos/{id}/)
-  try {
-    const prefix = `photos/${id}/`;
-    const listed = await c.env.PHOTOS_BUCKET.list({ prefix });
-    for (const obj of listed.objects) {
-      await c.env.PHOTOS_BUCKET.delete(obj.key);
-    }
-  } catch {
-    // R2 delete failures are non-critical
+  if (photo.status !== "quarantined") {
+    return c.json({ error: "Photo must be quarantined before deletion" }, 409);
   }
 
-  return c.json({ success: true, deleted: id });
+  const references = await c.env.DB.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM photo_aliases WHERE photo_id = ?) +
+      (SELECT COUNT(*) FROM photo_collections WHERE photo_id = ?) +
+      (SELECT COUNT(*) FROM photo_climb_links WHERE photo_id = ?) +
+      (SELECT COUNT(*) FROM photo_people WHERE photo_id = ?) AS total
+  `).bind(id, id, id, id).first<{ total: number }>();
+
+  if ((references?.total || 0) > 0) {
+    return c.json({ error: "Photo is still referenced", references: references?.total }, 409);
+  }
+
+  return c.json({
+    error: "Physical deletion is disabled; use the future audited cleanup workflow",
+  }, 409);
 });
 
 // POST /api/admin/resize - Custom resize
@@ -835,6 +956,9 @@ app.post("/api/admin/resize", async (c) => {
     .first<Photo>();
 
   if (!photo) return c.json({ error: "Photo not found" }, 404);
+  if (photo.status !== "active") {
+    return c.json({ error: "Photo is not active" }, 409);
+  }
 
   const r2Key = `${photo.r2_key}/w${w}.webp`;
 
@@ -845,26 +969,11 @@ app.post("/api/admin/resize", async (c) => {
     return c.json({ url: `${origin}/img/${photoId}?w=${w}`, cached: true, width: w });
   }
 
-  // Generate transform
-  const originalKey = `${photo.r2_key}/original.${photo.format}`;
-  const original = await c.env.PHOTOS_BUCKET.get(originalKey);
-  if (!original) return c.json({ error: "Original not found" }, 404);
+  const transformed = await getOrCreateTransform(c.env, c.executionCtx, photo, w, r2Key);
+  if (!transformed) return c.json({ error: "Transform failed or photo became inactive" }, 409);
 
-  try {
-    const transformed = await c.env.IMAGES.input(original.body)
-      .transform({ width: w, fit: "scale-down" })
-      .output({ format: "image/webp", quality: 85 });
-
-    const buffer = await transformed.response().arrayBuffer();
-    await c.env.PHOTOS_BUCKET.put(r2Key, buffer, {
-      httpMetadata: { contentType: "image/webp" },
-    });
-
-    const origin = new URL(c.req.url).origin;
-    return c.json({ url: `${origin}/img/${photoId}?w=${w}`, cached: false, width: w });
-  } catch (error) {
-    return c.json({ error: "Transform failed" }, 500);
-  }
+  const origin = new URL(c.req.url).origin;
+  return c.json({ url: `${origin}/img/${photoId}?w=${w}`, cached: false, width: w });
 });
 
 // POST /api/admin/upload - Upload new photo
@@ -895,7 +1004,11 @@ app.post("/api/admin/upload", async (c) => {
 
   // Generate ID
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-  const format = file.type === "image/png" ? "png" : "jpeg";
+  const format = file.type === "image/png"
+    ? "png"
+    : file.type === "image/webp"
+      ? "webp"
+      : "jpeg";
   const r2Key = `photos/${id}`;
 
   // Upload original to R2
@@ -923,7 +1036,7 @@ app.post("/api/admin/upload", async (c) => {
   const sql = `
     INSERT INTO photos (
       id, r2_key, title, location, date, width, height, format,
-      site, source, tags, exclude, size_bytes, created_at, updated_at
+      site, source, tags, exclude, status, visibility, size_bytes, created_at, updated_at
     ) VALUES (
       '${id}',
       '${r2Key}',
@@ -937,6 +1050,8 @@ app.post("/api/admin/upload", async (c) => {
       'upload',
       ${tags ? `'${esc(tags)}'` : "'[]'"},
       0,
+      'active',
+      'unlisted',
       ${file.size},
       datetime('now'),
       datetime('now')
@@ -969,13 +1084,15 @@ async function getOrCreateTransform(
   width: number,
   targetKey: string
 ): Promise<R2ObjectBody | null> {
-  const cacheKey = `${photo.id}:${width}`;
+  const cacheKey = targetKey;
 
   const existing = inFlightTransforms.get(cacheKey);
   if (existing) return existing;
 
   const transformPromise = (async (): Promise<R2ObjectBody | null> => {
     try {
+      if (!(await isPhotoActive(env.DB, photo.id))) return null;
+
       const originalKey = `${photo.r2_key}/original.${photo.format}`;
       const original = await env.PHOTOS_BUCKET.get(originalKey);
       if (!original) return null;
@@ -989,6 +1106,11 @@ async function getOrCreateTransform(
       await env.PHOTOS_BUCKET.put(targetKey, transformedBuffer, {
         httpMetadata: { contentType: "image/webp" },
       });
+
+      if (!(await isPhotoActive(env.DB, photo.id))) {
+        await env.PHOTOS_BUCKET.delete(targetKey);
+        return null;
+      }
 
       return await env.PHOTOS_BUCKET.get(targetKey);
     } catch (error) {
@@ -1029,7 +1151,7 @@ function getOpenApiSpec(baseUrl: string): object {
               in: "path",
               required: true,
               schema: { type: "string" },
-              description: "The photo ID",
+              description: "The canonical photo ID or a compatibility alias",
               example: "517c0f03a93c",
             },
             {
@@ -1109,10 +1231,66 @@ function getOpenApiSpec(baseUrl: string): object {
           },
         },
       },
+      "/api/collections/{slug}/photos": {
+        get: {
+          summary: "List photos in a public collection",
+          tags: ["Collections"],
+          parameters: [
+            {
+              name: "slug",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", default: 50, maximum: 100 },
+            },
+            {
+              name: "offset",
+              in: "query",
+              schema: { type: "integer", default: 0 },
+            },
+          ],
+          responses: {
+            "200": { description: "Ordered public collection photos" },
+            "404": { description: "Public collection not found" },
+          },
+        },
+      },
+      "/api/people/{slug}/photos": {
+        get: {
+          summary: "List public photos for an approved person",
+          tags: ["People"],
+          parameters: [
+            {
+              name: "slug",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", default: 50, maximum: 100 },
+            },
+            {
+              name: "offset",
+              in: "query",
+              schema: { type: "integer", default: 0 },
+            },
+          ],
+          responses: {
+            "200": { description: "Ordered public photos for the person" },
+            "404": { description: "Public person not found" },
+          },
+        },
+      },
       "/api/photos/{photoId}": {
         get: {
           summary: "Get photo metadata",
-          description: "Returns metadata for a single photo by ID.",
+          description: "Returns metadata for a single photo by canonical ID or compatibility alias.",
           tags: ["Metadata"],
           parameters: [
             {
@@ -1120,7 +1298,7 @@ function getOpenApiSpec(baseUrl: string): object {
               in: "path",
               required: true,
               schema: { type: "string" },
-              description: "The photo ID",
+              description: "The canonical photo ID or a compatibility alias",
               example: "517c0f03a93c",
             },
           ],
@@ -1157,6 +1335,8 @@ function getOpenApiSpec(baseUrl: string): object {
             source: { type: "string", nullable: true, example: "flickr" },
             tags: { type: "string", nullable: true },
             exclude: { type: "integer", enum: [0, 1] },
+            status: { type: "string", enum: ["active", "quarantined"] },
+            visibility: { type: "string", enum: ["public", "unlisted", "private"] },
             created_at: { type: "string", format: "date-time" },
             updated_at: { type: "string", format: "date-time" },
           },
@@ -1166,6 +1346,8 @@ function getOpenApiSpec(baseUrl: string): object {
     tags: [
       { name: "Images", description: "Image serving endpoints" },
       { name: "Metadata", description: "Photo metadata endpoints" },
+      { name: "Collections", description: "Curated public photo collections" },
+      { name: "People", description: "Approved public subject groupings" },
     ],
   };
 }
