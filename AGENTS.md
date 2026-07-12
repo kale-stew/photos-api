@@ -58,6 +58,7 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 ## Commands
 
 ```bash
+npm install            # runtime deps include `jose` (Access JWT); required before dev/deploy
 npm run typecheck
 npm run db:migrate:local
 npm run dev
@@ -65,6 +66,10 @@ npm run test:local
 ```
 
 Run remote migrations and deployment only when explicitly requested. Inspect package scripts before deploying because deployment hooks may perform remote synchronization.
+
+- Deployment reads `account_id` and `database_id` from a gitignored `wrangler.local.jsonc`; a fresh clone cannot deploy until it exists.
+- Deploying admin changes without `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set as Worker vars will return `403` for every `/admin*` and `/api/admin/*` route (deny-by-default), not fail open.
+- When applying a migration out of band (e.g. via the Cloudflare MCP because local `wrangler --remote` is unauthenticated), insert the matching `d1_migrations` row so the ledger stays consistent with `wrangler d1 migrations`.
 
 ## Anti-patterns
 
