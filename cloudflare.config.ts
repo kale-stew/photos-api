@@ -12,6 +12,7 @@ export default defineConfig({
 		compatibilityDate: "2025-05-24",
 		compatibilityFlags: [
 			"nodejs_compat_v2",
+			"global_fetch_strictly_public",
 		],
 		entrypoint: "src/index.tsx",
 		workersDev: true,
@@ -22,6 +23,7 @@ export default defineConfig({
 		},
 		env: {
 			ALLOWED_WIDTHS: bindings.text("200,400,800,1600"),
+			CLIMB_LOG_ORIGIN: bindings.text("https://kylies.photos"),
 			CF_ACCESS_TEAM_DOMAIN: bindings.secret(),
 			CF_ACCESS_AUD: bindings.secret(),
 			DB: bindings.d1({

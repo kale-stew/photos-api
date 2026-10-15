@@ -570,7 +570,52 @@ type AppEnv = Env & {
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
   AI: Ai;
+  CLIMB_LOG_ORIGIN: string;
 };
+
+interface ClimbOption {
+  id: string;
+  title: string | null;
+  date: string | null;
+  area: string | null;
+  state: string | null;
+}
+
+let climbOptionsCache: { expiresAt: number; options: ClimbOption[] } | undefined;
+
+async function getClimbOptions(env: AppEnv): Promise<ClimbOption[]> {
+  if (climbOptionsCache && climbOptionsCache.expiresAt > Date.now()) return climbOptionsCache.options;
+  try {
+    const response = await fetch(new URL("/api/climbs/options", env.CLIMB_LOG_ORIGIN), {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`climb-log returned ${response.status}`);
+    const body = await response.json() as { climbs?: ClimbOption[] };
+    const options = body.climbs || [];
+    climbOptionsCache = { expiresAt: Date.now() + 5 * 60_000, options };
+    return options;
+  } catch (error) {
+    console.error("Failed to fetch climb options:", error);
+    return [];
+  }
+}
+
+function climbLabel(climb: ClimbOption): string {
+  return [climb.date?.slice(0, 10), climb.title, climb.area, climb.state].filter(Boolean).join(" · ");
+}
+
+async function setPrimaryClimb(db: D1Database, photoId: string, climbId: string | null): Promise<void> {
+  const statements = [
+    db.prepare("DELETE FROM photo_climb_links WHERE photo_id = ?").bind(photoId),
+  ];
+  if (climbId) {
+    statements.push(
+      db.prepare("UPDATE photo_climb_links SET is_primary = 0 WHERE climb_id = ? AND is_primary = 1").bind(climbId),
+      db.prepare("INSERT INTO photo_climb_links (photo_id, climb_id, is_primary) VALUES (?, ?, 1)").bind(photoId, climbId),
+    );
+  }
+  await db.batch(statements);
+}
 
 const accessJwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
@@ -662,7 +707,7 @@ app.use("/admin/*", requireAccess);
 app.use("/api/admin/*", async (c, next) => {
   // Restricted CORS for admin API - no cross-origin access
   c.header("Access-Control-Allow-Origin", "null");
-  c.header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  c.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   c.header("Access-Control-Allow-Headers", "Content-Type, Cf-Access-Jwt-Assertion");
   if (c.req.method === "OPTIONS") return c.body(null);
 
@@ -878,6 +923,17 @@ app.get("/api/photos/:id", async (c) => {
   return c.json(photo);
 });
 
+app.get("/api/climb-photos", async (c) => {
+  const result = await c.env.DB.prepare(`
+    SELECT l.climb_id, l.photo_id, l.is_primary, p.date AS photo_date
+    FROM photo_climb_links l
+    JOIN photos p ON p.id = l.photo_id
+    WHERE p.status = 'active' AND p.visibility IN ('public', 'unlisted')
+    ORDER BY l.climb_id, l.is_primary DESC, p.date DESC, p.id
+  `).all();
+  return c.json({ assignments: result.results || [] });
+});
+
 // Redirect root to docs
 app.get("/", (c) => c.redirect("/docs", 302));
 
@@ -994,7 +1050,8 @@ app.get("/admin/", async (c) => {
   );
 });
 
-app.get("/admin/upload", (c) => {
+app.get("/admin/upload", async (c) => {
+  const climbOptions = await getClimbOptions(c.env);
   return c.html(
     <AdminLayout title="upload photos">
       <a href="/admin" class="back-link">← back to grid</a>
@@ -1033,6 +1090,15 @@ app.get("/admin/upload", (c) => {
           <label for="tags">tags (optional)</label>
           <input id="tags" name="tags" type="text" autocomplete="off" placeholder="coast, fog, sunset" />
         </div>
+        <div class="upload-field">
+          <label for="climb-search">hike (optional)</label>
+          <input id="climb-search" type="search" autocomplete="off" placeholder="Filter hikes by title, date, or area" />
+          <select id="climb-id" name="climbId">
+            <option value="">No formal hike assignment</option>
+            {climbOptions.map((climb) => <option value={climb.id} data-label={climbLabel(climb).toLocaleLowerCase()}>{climbLabel(climb)}</option>)}
+          </select>
+          <div class="upload-help">A formal assignment becomes this hike's primary preview.</div>
+        </div>
         <button class="upload-submit" type="submit">upload photos</button>
         <div id="upload-queue" class="upload-queue" aria-live="polite"></div>
       </form>
@@ -1041,6 +1107,16 @@ app.get("/admin/upload", (c) => {
         const queue = document.getElementById('upload-queue');
         const submit = form.querySelector('button[type="submit"]');
         let uploading = false;
+        const climbSelect = document.getElementById('climb-id');
+        const climbOptions = Array.from(climbSelect.options).map(option => ({ value: option.value, text: option.textContent, label: option.dataset.label || '' }));
+        document.getElementById('climb-search').addEventListener('input', (event) => {
+          const query = event.currentTarget.value.toLowerCase().trim();
+          const selected = climbSelect.value;
+          climbSelect.innerHTML = '';
+          for (const option of climbOptions.filter(option => !query || !option.value || option.label.includes(query))) {
+            climbSelect.add(new Option(option.text, option.value, false, option.value === selected));
+          }
+        });
         window.addEventListener('beforeunload', (event) => {
           if (uploading) { event.preventDefault(); event.returnValue = ''; }
         });
@@ -1065,6 +1141,7 @@ app.get("/admin/upload", (c) => {
               const value = document.getElementById(name).value.trim();
               if (value) data.set(name, value);
             }
+            if (climbSelect.value) data.set('climbId', climbSelect.value);
             try {
               const response = await fetch('/api/admin/upload', { method: 'POST', body: data });
               const result = await response.json();
@@ -1104,11 +1181,13 @@ app.get("/admin/photos/:id", async (c) => {
   const mapUrl = latitude != null && longitude != null
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.15}%2C${latitude - 0.1}%2C${longitude + 0.15}%2C${latitude + 0.1}&layer=mapnik&marker=${latitude}%2C${longitude}`
     : null;
-  const [aliases, collections, climbs, people] = await Promise.all([
+  const [aliases, collections, climbLinks, people, climbOptions, primaryClimb] = await Promise.all([
     c.env.DB.prepare("SELECT alias, kind FROM photo_aliases WHERE photo_id = ? ORDER BY kind, alias").bind(id).all<{ alias: string; kind: string }>(),
     c.env.DB.prepare("SELECT collection_slug FROM photo_collections WHERE photo_id = ? ORDER BY collection_slug").bind(id).all<{ collection_slug: string }>(),
     c.env.DB.prepare("SELECT climb_id FROM photo_climb_links WHERE photo_id = ? ORDER BY climb_id").bind(id).all<{ climb_id: string }>(),
     c.env.DB.prepare("SELECT person_slug FROM photo_people WHERE photo_id = ? ORDER BY person_slug").bind(id).all<{ person_slug: string }>(),
+    getClimbOptions(c.env),
+    c.env.DB.prepare("SELECT climb_id FROM photo_climb_links WHERE photo_id = ? ORDER BY is_primary DESC LIMIT 1").bind(id).first<{ climb_id: string }>(),
   ]);
 
   const origin = new URL(c.req.url).origin;
@@ -1155,6 +1234,12 @@ app.get("/admin/photos/:id", async (c) => {
                 </label>
               </div>
               <label>tags<input name="tags" value={tagsForInput(photo.tags)} placeholder="coast, fog, sunset" /></label>
+              <label>formal hike
+                <select id="climb-id" name="climbId">
+                  <option value="">No formal hike assignment</option>
+                  {climbOptions.map((climb) => <option value={climb.id} selected={primaryClimb?.climb_id === climb.id}>{climbLabel(climb)}</option>)}
+                </select>
+              </label>
               <div class="edit-row">
                 <label>site<input name="site" value={photo.site || "both"} /></label>
                 <label>status
@@ -1198,6 +1283,15 @@ app.get("/admin/photos/:id", async (c) => {
                   });
                   const result = await response.json();
                   if (!response.ok) throw new Error(result.error || 'save failed');
+                  const climbResponse = await fetch('/api/admin/photos/${photo.id}/climb', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ climbId: String(data.get('climbId') || '') || null }),
+                  });
+                  if (!climbResponse.ok) {
+                    const climbResult = await climbResponse.json();
+                    throw new Error(climbResult.error || 'hike assignment failed');
+                  }
                   status.textContent = 'Saved';
                   status.classList.add('saved');
                 } catch (error) {
@@ -1256,9 +1350,9 @@ app.get("/admin/photos/:id", async (c) => {
               {aliases.results.length ? <ul class="reference-list">{aliases.results.map((row) => <li><code>{row.alias}</code> · {row.kind}</li>)}</ul> : <span>none</span>}
             </div>
             <div class="reference-group"><h3>collections ({collections.results.length})</h3>{collections.results.length ? <ul class="reference-list">{collections.results.map((row) => <li>{row.collection_slug}</li>)}</ul> : <span>none</span>}</div>
-            <div class="reference-group"><h3>climbs ({climbs.results.length})</h3>{climbs.results.length ? <ul class="reference-list">{climbs.results.map((row) => <li><code>{row.climb_id}</code></li>)}</ul> : <span>none</span>}</div>
+            <div class="reference-group"><h3>climbs ({climbLinks.results.length})</h3>{climbLinks.results.length ? <ul class="reference-list">{climbLinks.results.map((row) => <li><code>{row.climb_id}</code></li>)}</ul> : <span>none</span>}</div>
             <div class="reference-group"><h3>people ({people.results.length})</h3>{people.results.length ? <ul class="reference-list">{people.results.map((row) => <li>{row.person_slug}</li>)}</ul> : <span>none</span>}</div>
-            {(collections.results.length > 0 || climbs.results.length > 0 || people.results.length > 0) && (
+            {(collections.results.length > 0 || climbLinks.results.length > 0 || people.results.length > 0) && (
               <div class="reference-actions">
                 <button id="unlink-non-alias" type="button">unlink collections, climbs & people</button>
               </div>
@@ -1453,6 +1547,22 @@ app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
   return c.json({ caption, model: "@cf/moondream/moondream3.1-9B-A2B" });
 });
 
+app.put("/api/admin/photos/:id/climb", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({})) as { climbId?: unknown };
+  const climbId = typeof body.climbId === "string" && body.climbId.trim() ? body.climbId.trim() : null;
+  const photo = await c.env.DB.prepare("SELECT id, status FROM photos WHERE id = ?").bind(id).first<{ id: string; status: string }>();
+  if (!photo) return c.json({ error: "Photo not found" }, 404);
+  if (photo.status !== "active") return c.json({ error: "Only active photos can be mapped" }, 409);
+  try {
+    await setPrimaryClimb(c.env.DB, id, climbId);
+    return c.json({ photoId: id, climbId });
+  } catch (error) {
+    console.error("Failed to update hike assignment:", error);
+    return c.json({ error: "Hike assignment failed" }, 409);
+  }
+});
+
 app.delete("/api/admin/photos/:id/references", async (c) => {
   const id = c.req.param("id");
   if (c.req.query("confirm") !== id) return c.json({ error: "Confirmation must match the photo ID" }, 400);
@@ -1578,6 +1688,7 @@ app.post("/api/admin/upload", async (c) => {
   const site = (formData.get("site") as string | null) || "both";
   const tags = formData.get("tags") as string | null;
   const destination = (formData.get("destination") as string | null) || "editorial";
+  const climbId = (formData.get("climbId") as string | null)?.trim() || null;
 
   if (!file) {
     return c.json({ error: "image file required" }, 400);
@@ -1621,6 +1732,7 @@ app.post("/api/admin/upload", async (c) => {
     .bind(sha256)
     .first<{ id: string }>();
   if (duplicate) {
+    if (climbId) await setPrimaryClimb(c.env.DB, duplicate.id, climbId);
     return c.json({
       id: duplicate.id,
       url: `${new URL(c.req.url).origin}/img/${duplicate.id}`,
@@ -1697,6 +1809,7 @@ app.post("/api/admin/upload", async (c) => {
         profile.artist, profile.copyright
       ).run();
     }
+    if (climbId) await setPrimaryClimb(c.env.DB, id, climbId);
   } catch (error) {
     // Clean up R2 if DB insert fails
     await c.env.PHOTOS_BUCKET.delete(`${r2Key}/original.${format}`);
@@ -1717,6 +1830,7 @@ app.post("/api/admin/upload", async (c) => {
     height,
     duplicate: false,
     destination,
+    climbId,
     profile,
   });
 });
