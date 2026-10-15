@@ -924,9 +924,7 @@ app.get("/admin/", async (c) => {
                 </div>
                 <div class="photo-card-actions">
                   <a href={`/admin/photos/${photo.id}`}>edit</a>
-                  {photo.source === "upload" && (
-                    <button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button>
-                  )}
+                  <button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button>
                 </div>
               </article>
             ))}
@@ -1305,10 +1303,6 @@ app.delete("/api/admin/photos/:id", async (c) => {
 
   if (c.req.query("confirm") !== id) {
     return c.json({ error: "Deletion requires confirm=<photo-id>" }, 400);
-  }
-
-  if (photo.source !== "upload") {
-    return c.json({ error: "Only admin-uploaded photos support direct deletion" }, 409);
   }
 
   if (photo.status !== "quarantined") {
