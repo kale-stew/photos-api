@@ -50,6 +50,7 @@ interface Photo {
   flickr_id: string | null;
   accent_color: string | null;
   source_url: string | null;
+  sha256: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -385,6 +386,64 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           margin: 0 0 var(--space-sm);
           color: var(--color-text);
         }
+
+        .upload-panel {
+          max-width: 720px;
+          background: var(--color-bg-card);
+          border-radius: var(--radius-xl);
+          padding: var(--space-xl);
+          box-shadow: var(--shadow-sm);
+        }
+        .upload-field { margin-bottom: var(--space-lg); }
+        .upload-field label {
+          display: block;
+          margin-bottom: var(--space-xs);
+          font-weight: 600;
+          font-size: 0.85rem;
+        }
+        .upload-field input, .upload-field select {
+          width: 100%;
+          min-height: 46px;
+          padding: 0.75rem;
+          border: 1px solid #ddd;
+          border-radius: var(--radius-md);
+          background: white;
+          font: inherit;
+        }
+        .upload-field input[type="file"] {
+          min-height: 120px;
+          padding: var(--space-lg);
+          border: 2px dashed #ccc;
+          background: #fafafa;
+        }
+        .upload-help { color: var(--color-text-muted); font-size: 0.8rem; margin-top: var(--space-xs); }
+        .upload-submit {
+          width: 100%;
+          min-height: 50px;
+          border: 0;
+          border-radius: var(--radius-md);
+          background: var(--gradient);
+          color: white;
+          font: inherit;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .upload-submit:disabled { opacity: 0.55; cursor: wait; }
+        .upload-queue { margin-top: var(--space-lg); display: grid; gap: var(--space-sm); }
+        .upload-item {
+          padding: 0.75rem;
+          border-radius: var(--radius-md);
+          background: var(--color-bg);
+          font-size: 0.85rem;
+        }
+        .upload-item.success { border-left: 3px solid #16a34a; }
+        .upload-item.error { border-left: 3px solid #dc2626; }
+        @media (max-width: 600px) {
+          .admin-main { padding: var(--space-md); }
+          .upload-panel { padding: var(--space-lg); }
+          .admin-header { padding: 0.75rem var(--space-md); }
+          .admin-header nav { gap: var(--space-md); }
+        }
       `}} />
     </head>
     <body>
@@ -393,6 +452,7 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           <a href="/admin">photos-api admin</a>
           <nav>
             <a href="/admin">grid</a>
+            <a href="/admin/upload">upload</a>
             <a href="/docs">api docs</a>
           </nav>
         </div>
@@ -496,6 +556,11 @@ app.use("/api/admin/*", async (c, next) => {
   c.header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   c.header("Access-Control-Allow-Headers", "Content-Type, Cf-Access-Jwt-Assertion");
   if (c.req.method === "OPTIONS") return c.body(null);
+
+  const origin = c.req.header("Origin");
+  if (origin && origin !== new URL(c.req.url).origin) {
+    return c.json({ error: "Cross-origin admin request denied" }, 403);
+  }
 
   return requireAccess(c, next);
 });
@@ -784,6 +849,98 @@ app.get("/admin", async (c) => {
   );
 });
 
+app.get("/admin/upload", (c) => {
+  return c.html(
+    <AdminLayout title="upload photos">
+      <a href="/admin" class="back-link">← back to grid</a>
+      <div class="page-title">
+        <h1>add photos</h1>
+        <p>Select a few photos, choose where they belong, and keep this page open while they upload.</p>
+      </div>
+      <form id="upload-form" class="upload-panel" enctype="multipart/form-data">
+        <div class="upload-field">
+          <label for="images">photos</label>
+          <input id="images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required />
+          <div class="upload-help">JPEG, PNG, or WebP · 20 MB each · uploads run one at a time</div>
+        </div>
+        <div class="upload-field">
+          <label for="destination">destination</label>
+          <select id="destination" name="destination">
+            <option value="portfolio">Portfolio — public gallery</option>
+            <option value="editorial" selected>Editorial — unlisted, usable in posts</option>
+            <option value="private">Private — not publicly available</option>
+          </select>
+        </div>
+        <div class="upload-field">
+          <label for="title">title (optional)</label>
+          <input id="title" name="title" type="text" autocomplete="off" />
+          <div class="upload-help">For multiple files, leave blank to use each filename.</div>
+        </div>
+        <div class="upload-field">
+          <label for="date">date (optional)</label>
+          <input id="date" name="date" type="date" />
+        </div>
+        <div class="upload-field">
+          <label for="location">location (optional)</label>
+          <input id="location" name="location" type="text" autocomplete="off" placeholder="Point Reyes, California" />
+        </div>
+        <div class="upload-field">
+          <label for="tags">tags (optional)</label>
+          <input id="tags" name="tags" type="text" autocomplete="off" placeholder="coast, fog, sunset" />
+        </div>
+        <button class="upload-submit" type="submit">upload photos</button>
+        <div id="upload-queue" class="upload-queue" aria-live="polite"></div>
+      </form>
+      <script dangerouslySetInnerHTML={{ __html: `
+        const form = document.getElementById('upload-form');
+        const queue = document.getElementById('upload-queue');
+        const submit = form.querySelector('button[type="submit"]');
+        let uploading = false;
+        window.addEventListener('beforeunload', (event) => {
+          if (uploading) { event.preventDefault(); event.returnValue = ''; }
+        });
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const files = Array.from(document.getElementById('images').files || []);
+          if (!files.length) return;
+          uploading = true;
+          submit.disabled = true;
+          queue.innerHTML = '';
+          for (const file of files) {
+            const row = document.createElement('div');
+            row.className = 'upload-item';
+            row.textContent = 'uploading ' + file.name + '…';
+            queue.appendChild(row);
+            const data = new FormData();
+            data.set('image', file);
+            data.set('destination', document.getElementById('destination').value);
+            const title = document.getElementById('title').value.trim();
+            if (title && files.length === 1) data.set('title', title);
+            for (const name of ['date', 'location', 'tags']) {
+              const value = document.getElementById(name).value.trim();
+              if (value) data.set(name, value);
+            }
+            try {
+              const response = await fetch('/api/admin/upload', { method: 'POST', body: data });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || 'upload failed');
+              row.classList.add('success');
+              row.innerHTML = (result.duplicate ? 'already exists: ' : 'uploaded: ') +
+                '<a href="/admin/photos/' + result.id + '">' + file.name + '</a>';
+            } catch (error) {
+              row.classList.add('error');
+              row.textContent = file.name + ': ' + (error instanceof Error ? error.message : 'upload failed');
+            }
+          }
+          uploading = false;
+          submit.disabled = false;
+          submit.textContent = 'upload more photos';
+        });
+      `}} />
+    </AdminLayout>
+  );
+});
+
 // GET /admin/photos/{id} - Photo Detail
 app.get("/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
@@ -999,11 +1156,12 @@ app.post("/api/admin/resize", async (c) => {
 app.post("/api/admin/upload", async (c) => {
   const formData = await c.req.formData();
   const file = formData.get("image") as File | null;
-  const title = formData.get("title") as string | null;
+  const requestedTitle = formData.get("title") as string | null;
   const location = formData.get("location") as string | null;
   const date = formData.get("date") as string | null;
-  const site = (formData.get("site") as string | null) || "kylieis-online";
+  const site = (formData.get("site") as string | null) || "both";
   const tags = formData.get("tags") as string | null;
+  const destination = (formData.get("destination") as string | null) || "editorial";
 
   if (!file) {
     return c.json({ error: "image file required" }, 400);
@@ -1021,6 +1179,14 @@ app.post("/api/admin/upload", async (c) => {
     return c.json({ error: "File too large (max 20MB)" }, 400);
   }
 
+  const destinations = {
+    portfolio: { visibility: "public", exclude: 0, collection: "portfolio" },
+    editorial: { visibility: "unlisted", exclude: 1, collection: "kylies-photos-content" },
+    private: { visibility: "private", exclude: 1, collection: null },
+  } as const;
+  if (!(destination in destinations)) return c.json({ error: "Invalid destination" }, 400);
+  const publication = destinations[destination as keyof typeof destinations];
+
   // Generate ID and determine format from MIME type
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const formatMap: Record<string, string> = {
@@ -1033,6 +1199,18 @@ app.post("/api/admin/upload", async (c) => {
 
   // Upload original to R2
   const arrayBuffer = await file.arrayBuffer();
+  const hashBytes = await crypto.subtle.digest("SHA-256", arrayBuffer);
+  const sha256 = Array.from(new Uint8Array(hashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const duplicate = await c.env.DB.prepare("SELECT id FROM photos WHERE sha256 = ? LIMIT 1")
+    .bind(sha256)
+    .first<{ id: string }>();
+  if (duplicate) {
+    return c.json({
+      id: duplicate.id,
+      url: `${new URL(c.req.url).origin}/img/${duplicate.id}`,
+      duplicate: true,
+    });
+  }
   await c.env.PHOTOS_BUCKET.put(`${r2Key}/original.${format}`, arrayBuffer, {
     httpMetadata: { contentType: file.type },
   });
@@ -1055,8 +1233,8 @@ app.post("/api/admin/upload", async (c) => {
   const sql = `
     INSERT INTO photos (
       id, r2_key, title, location, date, width, height, format,
-      site, source, tags, exclude, status, visibility, size_bytes, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      site, source, tags, exclude, status, visibility, size_bytes, sha256, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `;
 
   try {
@@ -1064,7 +1242,7 @@ app.post("/api/admin/upload", async (c) => {
       .bind(
         id,
         r2Key,
-        title,
+        requestedTitle?.trim() || file.name.replace(/\.[^.]+$/, ""),
         location,
         date,
         width,
@@ -1073,24 +1251,38 @@ app.post("/api/admin/upload", async (c) => {
         site,
         "upload",
         tags ?? "[]",
-        0,
+        publication.exclude,
         "active",
-        "unlisted",
-        file.size
+        publication.visibility,
+        file.size,
+        sha256
       )
       .run();
+    if (publication.collection) {
+      await c.env.DB.prepare("INSERT INTO photo_collections (photo_id, collection_slug) VALUES (?, ?)")
+        .bind(id, publication.collection)
+        .run();
+    }
   } catch (error) {
     // Clean up R2 if DB insert fails
     await c.env.PHOTOS_BUCKET.delete(`${r2Key}/original.${format}`);
+    await c.env.DB.prepare("DELETE FROM photos WHERE id = ?").bind(id).run();
     return c.json({ error: "Database insert failed" }, 500);
   }
+
+  const created = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?").bind(id).first<Photo>();
+  if (!created) return c.json({ error: "Photo metadata missing after upload" }, 500);
+  const transform = await getOrCreateTransform(c.env, c.executionCtx, created, 800, `${r2Key}/w800.webp`);
+  if (!transform) return c.json({ error: "Photo saved but preview generation failed", id }, 500);
 
   return c.json({
     id,
     url: `${new URL(c.req.url).origin}/img/${id}`,
-    title,
+    title: created.title,
     width,
     height,
+    duplicate: false,
+    destination,
   });
 });
 
