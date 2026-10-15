@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-15T06:08:52.690Z",
+  "generatedAt": "2026-10-15T06:11:09.814Z",
   "summary": {
     "desktopPhotos": 336,
     "profiled": 336,
@@ -8,8 +8,8 @@
     "withGps": 198,
     "withDescription": 0,
     "withCamera": 313,
-    "matchedHumanLocation": 40,
-    "gpsKeptProtected": 175
+    "publicLocationChanges": 0,
+    "gpsKeptProtected": 198
   },
   "updates": [
     {
@@ -225,7 +225,7 @@
       "updates": {
         "title": "Yosemite2",
         "caption": null,
-        "location": "Yosemite National Park, CA",
+        "location": null,
         "date": "2025-04-05"
       }
     },
@@ -473,7 +473,7 @@
       "updates": {
         "title": "Dunes",
         "caption": null,
-        "location": "Great Sand Dunes NP, Colorado",
+        "location": null,
         "date": "2018-08-21"
       }
     },
@@ -504,7 +504,7 @@
       "updates": {
         "title": "Arches2",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2024-02-09"
       }
     },
@@ -721,7 +721,7 @@
       "updates": {
         "title": "Mammoth2",
         "caption": null,
-        "location": "Mammoth Lakes, CA",
+        "location": null,
         "date": "2025-12-06"
       }
     },
@@ -1403,7 +1403,7 @@
       "updates": {
         "title": "Golden Bear",
         "caption": null,
-        "location": "Golden Gate SP, California",
+        "location": null,
         "date": "2025-07-27"
       }
     },
@@ -1713,7 +1713,7 @@
       "updates": {
         "title": "Kilimanjaro",
         "caption": null,
-        "location": "Kilimanjaro National Park, Tanzania",
+        "location": null,
         "date": "2023-08-30"
       }
     },
@@ -2116,7 +2116,7 @@
       "updates": {
         "title": "Sf Sunset",
         "caption": null,
-        "location": "Inner Sunset, SF, CA",
+        "location": null,
         "date": "2025-08-06"
       }
     },
@@ -2271,7 +2271,7 @@
       "updates": {
         "title": "Lady Wash",
         "caption": null,
-        "location": "North Wash, UT",
+        "location": null,
         "date": "2021-03-09"
       }
     },
@@ -2364,7 +2364,7 @@
       "updates": {
         "title": "Denali Range",
         "caption": null,
-        "location": "Denali SP, Alaska",
+        "location": null,
         "date": "2022-09-23"
       }
     },
@@ -2550,7 +2550,7 @@
       "updates": {
         "title": "Snowmass",
         "caption": null,
-        "location": "Aspen-Snowmass, CO",
+        "location": null,
         "date": "2026-02-22"
       }
     },
@@ -2705,7 +2705,7 @@
       "updates": {
         "title": "Arches4",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2024-02-09"
       }
     },
@@ -3232,7 +3232,7 @@
       "updates": {
         "title": "Arches7",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2024-03-24"
       }
     },
@@ -3573,7 +3573,7 @@
       "updates": {
         "title": "Arches5",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2024-02-09"
       }
     },
@@ -4100,7 +4100,7 @@
       "updates": {
         "title": "Baker6",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-19"
       }
     },
@@ -4193,7 +4193,7 @@
       "updates": {
         "title": "Arches3",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2024-02-09"
       }
     },
@@ -4596,7 +4596,7 @@
       "updates": {
         "title": "Georgetown",
         "caption": null,
-        "location": "Georgetown, Colorado",
+        "location": null,
         "date": "2022-04-25"
       }
     },
@@ -4782,7 +4782,7 @@
       "updates": {
         "title": "Behind The Rocks",
         "caption": null,
-        "location": "Behind the Rocks Wilderness, Utah",
+        "location": null,
         "date": "2023-04-02"
       }
     },
@@ -4906,7 +4906,7 @@
       "updates": {
         "title": "Baker7",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-19"
       }
     },
@@ -5061,7 +5061,7 @@
       "updates": {
         "title": "Loveland Pass",
         "caption": null,
-        "location": "Loveland Pass, Colorado",
+        "location": null,
         "date": "2021-11-21"
       }
     },
@@ -5092,7 +5092,7 @@
       "updates": {
         "title": "Sf Sunset2",
         "caption": null,
-        "location": "Inner Sunset, SF, CA",
+        "location": null,
         "date": "2025-08-06"
       }
     },
@@ -6146,7 +6146,7 @@
       "updates": {
         "title": "Durango Silverton Train",
         "caption": null,
-        "location": "Durango, Colorado",
+        "location": null,
         "date": "2022-07-20"
       }
     },
@@ -6797,7 +6797,7 @@
       "updates": {
         "title": "El Granada",
         "caption": null,
-        "location": "El Granada, California",
+        "location": null,
         "date": "2025-03-09"
       }
     },
@@ -7417,7 +7417,7 @@
       "updates": {
         "title": "Yosemite",
         "caption": null,
-        "location": "Yosemite National Park, CA",
+        "location": null,
         "date": "2025-04-05"
       }
     },
@@ -7603,7 +7603,7 @@
       "updates": {
         "title": "Arches",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2024-02-09"
       }
     },
@@ -7696,7 +7696,7 @@
       "updates": {
         "title": "Kilimanjaro4",
         "caption": null,
-        "location": "Kilimanjaro National Park, Tanzania",
+        "location": null,
         "date": "2023-08-29"
       }
     },
@@ -7758,7 +7758,7 @@
       "updates": {
         "title": "Baker2",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-18"
       }
     },
@@ -7913,7 +7913,7 @@
       "updates": {
         "title": "Yosemite",
         "caption": null,
-        "location": "Yosemite National Park, CA",
+        "location": null,
         "date": null
       }
     },
@@ -8130,7 +8130,7 @@
       "updates": {
         "title": "Inyo",
         "caption": null,
-        "location": "Inyo NF, California",
+        "location": null,
         "date": "2025-08-24"
       }
     },
@@ -8254,7 +8254,7 @@
       "updates": {
         "title": "Arches",
         "caption": null,
-        "location": "Arches NP, Utah",
+        "location": null,
         "date": "2018-08-17"
       }
     },
@@ -8378,7 +8378,7 @@
       "updates": {
         "title": "Baker5",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-19"
       }
     },
@@ -8471,7 +8471,7 @@
       "updates": {
         "title": "Chicago",
         "caption": null,
-        "location": "Chicago, IL",
+        "location": null,
         "date": "2025-11-05"
       }
     },
@@ -8750,7 +8750,7 @@
       "updates": {
         "title": "Leadville",
         "caption": null,
-        "location": "Leadville, CO",
+        "location": null,
         "date": "2026-02-17"
       }
     },
@@ -9091,7 +9091,7 @@
       "updates": {
         "title": "Kilimanjaro3",
         "caption": null,
-        "location": "Kilimanjaro National Park, Tanzania",
+        "location": null,
         "date": "2023-08-30"
       }
     },
@@ -9401,7 +9401,7 @@
       "updates": {
         "title": "Mammoth3",
         "caption": null,
-        "location": "Mammoth Lakes, CA",
+        "location": null,
         "date": "2025-12-07"
       }
     },
@@ -9525,7 +9525,7 @@
       "updates": {
         "title": "Mammoth",
         "caption": null,
-        "location": "Mammoth Lakes, CA",
+        "location": null,
         "date": "2025-12-06"
       }
     },
@@ -9649,7 +9649,7 @@
       "updates": {
         "title": "Baker3",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-19"
       }
     },
@@ -9866,7 +9866,7 @@
       "updates": {
         "title": "Baker4",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-18"
       }
     },
@@ -10021,7 +10021,7 @@
       "updates": {
         "title": "Kilimanjaro2",
         "caption": null,
-        "location": "Kilimanjaro National Park, Tanzania",
+        "location": null,
         "date": "2023-09-03"
       }
     },
@@ -10083,7 +10083,7 @@
       "updates": {
         "title": "Ocean Beach",
         "caption": null,
-        "location": "Ocean Beach, SF, CA",
+        "location": null,
         "date": "2026-03-19"
       }
     },
@@ -10238,7 +10238,7 @@
       "updates": {
         "title": "Baker",
         "caption": null,
-        "location": "Mount Baker Snoqualmie NF, Washington",
+        "location": null,
         "date": "2023-06-18"
       }
     },
