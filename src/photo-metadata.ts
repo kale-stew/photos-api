@@ -16,6 +16,10 @@ export interface PhotoProfile {
   software: string | null;
   orientation: number | null;
   colorSpace: string | null;
+  imageDescription: string | null;
+  userComment: string | null;
+  artist: string | null;
+  copyright: string | null;
 }
 
 export const UPLOAD_TYPES: Record<string, "jpeg" | "png" | "webp" | "heic"> = {
@@ -46,6 +50,7 @@ export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | n
         "Make", "Model", "LensModel", "FocalLength", "FNumber", "ExposureTime",
         "ISO", "ExposureCompensation", "DateTimeOriginal", "CreateDate",
         "GPSAltitude", "Software", "Orientation", "ColorSpace",
+        "ImageDescription", "UserComment", "Artist", "Copyright",
       ]),
       exifr.gps(input).catch(() => null),
     ]);
@@ -67,6 +72,10 @@ export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | n
       software: text(metadata.Software),
       orientation: number(metadata.Orientation),
       colorSpace: text(metadata.ColorSpace) ?? (number(metadata.ColorSpace) === 1 ? "sRGB" : null),
+      imageDescription: text(metadata.ImageDescription),
+      userComment: text(metadata.UserComment),
+      artist: text(metadata.Artist),
+      copyright: text(metadata.Copyright),
     };
   } catch {
     return null;

@@ -15,6 +15,9 @@ CREATE TABLE photo_exif (
   software TEXT,
   orientation INTEGER,
   color_space TEXT,
+  image_description TEXT,
+  artist TEXT,
+  copyright TEXT,
   extracted_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

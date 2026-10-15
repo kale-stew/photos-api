@@ -21,6 +21,7 @@ import { Hono, type Context, type Next } from "hono";
 import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
+import { matchExistingLocation } from "./location-matcher";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -64,6 +65,28 @@ function tagsForInput(tags: string | null): string {
   } catch {
     return tags;
   }
+}
+
+async function locationFromExistingPhotos(db: D1Database, profile: PhotoProfile | null): Promise<string | null> {
+  if (profile?.latitude == null || profile.longitude == null) return null;
+  const result = await db.prepare(`
+    SELECT p.location, e.gps_latitude, e.gps_longitude
+    FROM photo_exif e
+    JOIN photos p ON p.id = e.photo_id
+    WHERE p.location IS NOT NULL
+      AND e.gps_latitude IS NOT NULL
+      AND e.gps_longitude IS NOT NULL
+    LIMIT 2000
+  `).all<{ location: string; gps_latitude: number; gps_longitude: number }>();
+  return matchExistingLocation(
+    profile.latitude,
+    profile.longitude,
+    result.results.map((row) => ({
+      location: row.location,
+      latitude: row.gps_latitude,
+      longitude: row.gps_longitude,
+    }))
+  )?.location || null;
 }
 
 // ============ ADMIN LAYOUT & COMPONENTS ============
@@ -1410,6 +1433,7 @@ app.post("/api/admin/upload", async (c) => {
   const arrayBuffer = await file.arrayBuffer();
   const profile = await profilePhoto(arrayBuffer);
   const effectiveDate = date || dateInputValue(profile?.dateTaken ?? null);
+  const effectiveLocation = location || await locationFromExistingPhotos(c.env.DB, profile);
   const hashBytes = await crypto.subtle.digest("SHA-256", arrayBuffer);
   const sha256 = Array.from(new Uint8Array(hashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const duplicate = await c.env.DB.prepare("SELECT id FROM photos WHERE sha256 = ? LIMIT 1")
@@ -1454,7 +1478,7 @@ app.post("/api/admin/upload", async (c) => {
         id,
         r2Key,
         requestedTitle?.trim() || file.name.replace(/\.[^.]+$/, ""),
-        location,
+        effectiveLocation,
         effectiveDate,
         width,
         height,
@@ -1481,13 +1505,15 @@ app.post("/api/admin/upload", async (c) => {
           exposure_time, iso, exposure_compensation, date_taken,
           gps_latitude, gps_longitude, gps_altitude, software,
           orientation, color_space
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          , image_description, artist, copyright
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id, profile.make, profile.model, profile.lensModel, profile.focalLength,
         profile.aperture, profile.exposureTime, profile.iso,
         profile.exposureCompensation, profile.dateTaken, profile.latitude,
         profile.longitude, profile.altitude, profile.software,
-        profile.orientation, profile.colorSpace
+        profile.orientation, profile.colorSpace, profile.imageDescription,
+        profile.artist, profile.copyright
       ).run();
     }
   } catch (error) {
