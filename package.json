@@ -20,7 +20,10 @@
     "migrate:climb-links": "npx tsx scripts/migrate/backfill-climb-links.ts",
     "migrate:map-peaks": "npx tsx scripts/migrate/map-centennial-photos.ts",
     "backfill:aliases": "npx tsx scripts/migrate/backfill-photo-aliases.ts",
-    "generate:blurhash": "npx tsx scripts/migrate/generate-blurhash.ts"
+    "generate:blurhash": "npx tsx scripts/migrate/generate-blurhash.ts",
+    "import:local:plan": "npx tsx scripts/migrate/import-local-photos.ts",
+    "import:local:apply": "npx tsx scripts/migrate/import-local-photos.ts --apply --remote",
+    "test:import-local": "npx tsx --test scripts/migrate/import-local-photos.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260524.1",
