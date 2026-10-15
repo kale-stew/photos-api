@@ -267,6 +267,7 @@ function cf(args: string[], options: { encoding?: "utf8" | "buffer" } = {}): str
       return execFileSync("cf", args, {
         encoding: options.encoding === "buffer" ? "buffer" : "utf8",
         env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: cloudflareTarget.accountId },
+        maxBuffer: 350 * 1024 * 1024,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
