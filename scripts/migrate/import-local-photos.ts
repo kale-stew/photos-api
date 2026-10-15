@@ -331,7 +331,7 @@ async function commitPhoto(photo: ImportPhoto): Promise<void> {
   const collection = photo.collection ? `
     INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug)
     VALUES (${sqlString(photo.id)}, ${sqlString(photo.collection)});` : "";
-  query(`BEGIN;${inserts}${aliases}${collection}COMMIT;`);
+  query(`${inserts}${aliases}${collection}`);
 
   const verified = query(`SELECT id, r2_key FROM photos WHERE id = ${sqlString(photo.id)}`)[0];
   if (!verified || verified.r2_key !== photo.r2Key) throw new Error(`D1 verification failed for ${photo.id}`);
