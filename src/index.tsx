@@ -20,6 +20,7 @@
 import { Hono, type Context, type Next } from "hono";
 import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -53,6 +54,16 @@ interface Photo {
   sha256: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function tagsForInput(tags: string | null): string {
+  if (!tags) return "";
+  try {
+    const parsed = JSON.parse(tags);
+    return Array.isArray(parsed) ? parsed.join(", ") : tags;
+  } catch {
+    return tags;
+  }
 }
 
 // ============ ADMIN LAYOUT & COMPONENTS ============
@@ -438,11 +449,32 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         }
         .upload-item.success { border-left: 3px solid #16a34a; }
         .upload-item.error { border-left: 3px solid #dc2626; }
+        .edit-form { display: grid; gap: var(--space-md); }
+        .edit-form label { display: grid; gap: var(--space-xs); font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); }
+        .edit-form input, .edit-form select, .edit-form textarea {
+          width: 100%;
+          padding: 0.65rem;
+          border: 1px solid #ddd;
+          border-radius: var(--radius-md);
+          background: white;
+          color: var(--color-text);
+          font: inherit;
+        }
+        .edit-form textarea { min-height: 84px; resize: vertical; }
+        .edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+        .edit-checkbox { display: flex !important; grid-template-columns: auto 1fr; align-items: center; }
+        .edit-checkbox input { width: auto; }
+        .edit-submit { border: 0; border-radius: var(--radius-md); padding: 0.75rem; background: var(--gradient); color: white; font-weight: 700; cursor: pointer; }
+        .edit-status { min-height: 1.25rem; font-size: 0.8rem; color: var(--color-text-muted); }
+        .exif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); font-size: 0.8rem; }
+        .exif-grid div { padding: var(--space-sm); background: var(--color-bg); border-radius: var(--radius-sm); }
+        .exif-grid strong { display: block; color: var(--color-text-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; }
         @media (max-width: 600px) {
           .admin-main { padding: var(--space-md); }
           .upload-panel { padding: var(--space-lg); }
           .admin-header { padding: 0.75rem var(--space-md); }
           .admin-header nav { gap: var(--space-md); }
+          .edit-row, .exif-grid { grid-template-columns: 1fr; }
         }
       `}} />
     </head>
@@ -958,6 +990,10 @@ app.get("/admin/photos/:id", async (c) => {
 
   if (!photo) return c.text("Photo not found", 404);
 
+  const exif = await c.env.DB.prepare("SELECT * FROM photo_exif WHERE photo_id = ?")
+    .bind(id)
+    .first<Record<string, string | number | null>>();
+
   const origin = new URL(c.req.url).origin;
   const standardWidths = [200, 400, 800, 1600];
 
@@ -976,6 +1012,89 @@ app.get("/admin/photos/:id", async (c) => {
         </div>
 
         <div class="detail-sidebar">
+          <div class="detail-panel">
+            <h2>edit metadata</h2>
+            <form id="metadata-form" class="edit-form">
+              <label>title<input name="title" value={photo.title || ""} /></label>
+              <label>caption<textarea name="caption">{photo.caption || ""}</textarea></label>
+              <label>location<input name="location" value={photo.location || ""} /></label>
+              <div class="edit-row">
+                <label>date<input name="date" type="date" value={photo.date?.slice(0, 10) || dateInputValue(exif?.date_taken as string | null) || ""} /></label>
+                <label>visibility
+                  <select name="visibility">
+                    <option value="public" selected={photo.visibility === "public"}>public</option>
+                    <option value="unlisted" selected={photo.visibility === "unlisted"}>unlisted</option>
+                    <option value="private" selected={photo.visibility === "private"}>private</option>
+                  </select>
+                </label>
+              </div>
+              <label>tags<input name="tags" value={tagsForInput(photo.tags)} placeholder="coast, fog, sunset" /></label>
+              <div class="edit-row">
+                <label>site<input name="site" value={photo.site || "both"} /></label>
+                <label>status
+                  <select name="status">
+                    <option value="active" selected={photo.status === "active"}>active</option>
+                    <option value="quarantined" selected={photo.status === "quarantined"}>quarantined</option>
+                  </select>
+                </label>
+              </div>
+              <label class="edit-checkbox"><input name="exclude" type="checkbox" checked={photo.exclude === 1} /> hide from compatibility listings</label>
+              <button class="edit-submit" type="submit">save changes</button>
+              <div id="edit-status" class="edit-status" aria-live="polite"></div>
+            </form>
+            <script dangerouslySetInnerHTML={{ __html: `
+              document.getElementById('metadata-form').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const button = form.querySelector('button');
+                const status = document.getElementById('edit-status');
+                button.disabled = true;
+                status.textContent = 'saving…';
+                const data = new FormData(form);
+                const tags = String(data.get('tags') || '').split(',').map(tag => tag.trim()).filter(Boolean);
+                const body = {
+                  title: String(data.get('title') || '') || null,
+                  caption: String(data.get('caption') || '') || null,
+                  location: String(data.get('location') || '') || null,
+                  date: String(data.get('date') || '') || null,
+                  tags: JSON.stringify(tags),
+                  site: String(data.get('site') || 'both'),
+                  status: String(data.get('status')),
+                  visibility: String(data.get('visibility')),
+                  exclude: data.get('exclude') === 'on',
+                };
+                try {
+                  const response = await fetch('/api/admin/photos/${photo.id}', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                  });
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || 'save failed');
+                  status.textContent = 'saved';
+                } catch (error) {
+                  status.textContent = error instanceof Error ? error.message : 'save failed';
+                } finally {
+                  button.disabled = false;
+                }
+              });
+            `}} />
+          </div>
+
+          {exif && (
+            <div class="detail-panel">
+              <h2>capture profile</h2>
+              <div class="exif-grid">
+                <div><strong>camera</strong>{[exif.make, exif.model].filter(Boolean).join(" ") || "—"}</div>
+                <div><strong>lens</strong>{exif.lens_model || "—"}</div>
+                <div><strong>captured</strong>{exif.date_taken || "—"}</div>
+                <div><strong>exposure</strong>{exif.aperture ? `ƒ/${exif.aperture}` : "—"}{exif.iso ? ` · ISO ${exif.iso}` : ""}</div>
+                <div><strong>focal length</strong>{exif.focal_length ? `${exif.focal_length}mm` : "—"}</div>
+                <div><strong>location</strong>{exif.gps_latitude && exif.gps_longitude ? `${Number(exif.gps_latitude).toFixed(4)}, ${Number(exif.gps_longitude).toFixed(4)}` : "—"}</div>
+              </div>
+            </div>
+          )}
+
           <div class="detail-panel">
             <h2>metadata</h2>
             <table class="meta-table">
@@ -1176,9 +1295,9 @@ app.post("/api/admin/upload", async (c) => {
   }
 
   // Validate file type
-  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+  const allowedTypes = Object.keys(UPLOAD_TYPES);
   if (!allowedTypes.includes(file.type)) {
-    return c.json({ error: "Only JPEG, PNG, WebP allowed" }, 400);
+    return c.json({ error: "Only JPEG, PNG, WebP, HEIC, or HEIF allowed" }, 400);
   }
 
   // Validate file size (20MB)
@@ -1197,16 +1316,13 @@ app.post("/api/admin/upload", async (c) => {
 
   // Generate ID and determine format from MIME type
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-  const formatMap: Record<string, string> = {
-    "image/jpeg": "jpeg",
-    "image/png": "png",
-    "image/webp": "webp",
-  };
-  const format = formatMap[file.type] ?? "jpeg";
+  const format = UPLOAD_TYPES[file.type];
   const r2Key = `photos/${id}`;
 
   // Upload original to R2
   const arrayBuffer = await file.arrayBuffer();
+  const profile = await profilePhoto(arrayBuffer);
+  const effectiveDate = date || dateInputValue(profile?.dateTaken ?? null);
   const hashBytes = await crypto.subtle.digest("SHA-256", arrayBuffer);
   const sha256 = Array.from(new Uint8Array(hashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const duplicate = await c.env.DB.prepare("SELECT id FROM photos WHERE sha256 = ? LIMIT 1")
@@ -1252,7 +1368,7 @@ app.post("/api/admin/upload", async (c) => {
         r2Key,
         requestedTitle?.trim() || file.name.replace(/\.[^.]+$/, ""),
         location,
-        date,
+        effectiveDate,
         width,
         height,
         format,
@@ -1270,6 +1386,22 @@ app.post("/api/admin/upload", async (c) => {
       await c.env.DB.prepare("INSERT INTO photo_collections (photo_id, collection_slug) VALUES (?, ?)")
         .bind(id, publication.collection)
         .run();
+    }
+    if (profile) {
+      await c.env.DB.prepare(`
+        INSERT INTO photo_exif (
+          photo_id, make, model, lens_model, focal_length, aperture,
+          exposure_time, iso, exposure_compensation, date_taken,
+          gps_latitude, gps_longitude, gps_altitude, software,
+          orientation, color_space
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id, profile.make, profile.model, profile.lensModel, profile.focalLength,
+        profile.aperture, profile.exposureTime, profile.iso,
+        profile.exposureCompensation, profile.dateTaken, profile.latitude,
+        profile.longitude, profile.altitude, profile.software,
+        profile.orientation, profile.colorSpace
+      ).run();
     }
   } catch (error) {
     // Clean up R2 if DB insert fails
@@ -1291,6 +1423,7 @@ app.post("/api/admin/upload", async (c) => {
     height,
     duplicate: false,
     destination,
+    profile,
   });
 });
 
