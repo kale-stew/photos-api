@@ -32,6 +32,7 @@ export default defineConfig({
 				name: "photos-bucket",
 			}),
 			IMAGES: bindings.images({}),
+			AI: bindings.ai(),
 		},
 	},
 });

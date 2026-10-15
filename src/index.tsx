@@ -12,6 +12,7 @@
  *   GET /admin                     - Photo grid
  *   GET /admin/photos/{id}         - Photo detail view
  *   PATCH /api/admin/photos/{id}   - Edit photo metadata
+ *   POST /api/admin/photos/{id}/caption-suggestion - Suggest a reviewed caption
  *   DELETE /api/admin/photos/{id}  - Validate deletion eligibility; never deletes directly
  *   POST /api/admin/resize         - Custom resize
  *   POST /api/admin/upload         - Upload new photo
@@ -69,7 +70,8 @@ function tagsForInput(tags: string | null): string {
 
 async function locationFromExistingPhotos(
   db: D1Database,
-  profile: PhotoProfile | null,
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
   filename: string
 ): Promise<string | null> {
   const result = await db.prepare(`
@@ -79,8 +81,8 @@ async function locationFromExistingPhotos(
     WHERE p.location IS NOT NULL
     LIMIT 2000
   `).all<{ location: string; gps_latitude: number | null; gps_longitude: number | null }>();
-  const gpsMatch = profile?.latitude != null && profile.longitude != null
-    ? matchExistingLocation(profile.latitude, profile.longitude, result.results.flatMap((row) => (
+  const gpsMatch = latitude != null && longitude != null
+    ? matchExistingLocation(latitude, longitude, result.results.flatMap((row) => (
       row.gps_latitude != null && row.gps_longitude != null ? [{
       location: row.location,
       latitude: row.gps_latitude,
@@ -511,10 +513,15 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         .edit-checkbox { display: flex !important; grid-template-columns: auto 1fr; align-items: center; }
         .edit-checkbox input { width: auto; }
         .edit-submit { border: 0; border-radius: var(--radius-md); padding: 0.75rem; background: var(--gradient); color: white; font-weight: 700; cursor: pointer; }
+        .ai-caption-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+        .ai-caption-button { border: 1px solid var(--color-accent-light); background: var(--color-accent-light); color: var(--color-accent); border-radius: var(--radius-sm); padding: 0.3rem 0.55rem; font: inherit; font-size: 0.7rem; cursor: pointer; }
         .edit-status { min-height: 1.25rem; font-size: 0.8rem; color: var(--color-text-muted); }
         .exif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); font-size: 0.8rem; }
         .exif-grid div { padding: var(--space-sm); background: var(--color-bg); border-radius: var(--radius-sm); }
         .exif-grid strong { display: block; color: var(--color-text-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; }
+        .location-map { width: 100%; height: 280px; border: 0; border-radius: var(--radius-md); margin-top: var(--space-md); }
+        .location-suggestion { margin-top: var(--space-sm); padding: 0.65rem; border-radius: var(--radius-md); background: var(--color-accent-light); font-size: 0.8rem; }
+        .location-suggestion button { margin-left: var(--space-sm); border: 0; background: var(--color-accent); color: white; border-radius: var(--radius-sm); padding: 0.3rem 0.6rem; cursor: pointer; }
         @media (max-width: 600px) {
           .admin-main { padding: var(--space-md); }
           .upload-panel { padding: var(--space-lg); }
@@ -550,6 +557,7 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
 type AppEnv = Env & {
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
+  AI: Ai;
 };
 
 const accessJwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
@@ -1075,6 +1083,12 @@ app.get("/admin/photos/:id", async (c) => {
   const exif = await c.env.DB.prepare("SELECT * FROM photo_exif WHERE photo_id = ?")
     .bind(id)
     .first<Record<string, string | number | null>>();
+  const latitude = typeof exif?.gps_latitude === "number" ? exif.gps_latitude : null;
+  const longitude = typeof exif?.gps_longitude === "number" ? exif.gps_longitude : null;
+  const suggestedLocation = await locationFromExistingPhotos(c.env.DB, latitude, longitude, photo.title || "");
+  const mapUrl = latitude != null && longitude != null
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.15}%2C${latitude - 0.1}%2C${longitude + 0.15}%2C${latitude + 0.1}&layer=mapnik&marker=${latitude}%2C${longitude}`
+    : null;
 
   const origin = new URL(c.req.url).origin;
   const standardWidths = [200, 400, 800, 1600];
@@ -1098,8 +1112,17 @@ app.get("/admin/photos/:id", async (c) => {
             <h2>edit metadata</h2>
             <form id="metadata-form" class="edit-form">
               <label>title<input name="title" value={photo.title || ""} /></label>
-              <label>caption<textarea name="caption">{photo.caption || ""}</textarea></label>
-              <label>location<input name="location" value={photo.location || ""} /></label>
+              <label>
+                <span class="ai-caption-row"><span>caption</span><button id="suggest-caption" class="ai-caption-button" type="button">suggest with AI</button></span>
+                <textarea id="caption-input" name="caption">{photo.caption || ""}</textarea>
+              </label>
+              <label>location<input id="location-input" name="location" value={photo.location || ""} /></label>
+              {suggestedLocation && suggestedLocation !== photo.location && (
+                <div class="location-suggestion">
+                  nearest known label: <strong>{suggestedLocation}</strong>
+                  <button type="button" onclick={`document.getElementById('location-input').value=${JSON.stringify(suggestedLocation)}`}>use this</button>
+                </div>
+              )}
               <div class="edit-row">
                 <label>date<input name="date" type="date" value={photo.date?.slice(0, 10) || dateInputValue(exif?.date_taken as string | null) || ""} /></label>
                 <label>visibility
@@ -1160,6 +1183,23 @@ app.get("/admin/photos/:id", async (c) => {
                   button.disabled = false;
                 }
               });
+              document.getElementById('suggest-caption').addEventListener('click', async (event) => {
+                const button = event.currentTarget;
+                const status = document.getElementById('edit-status');
+                button.disabled = true;
+                status.textContent = 'looking at the photo…';
+                try {
+                  const response = await fetch('/api/admin/photos/${photo.id}/caption-suggestion', { method: 'POST' });
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || 'caption suggestion failed');
+                  document.getElementById('caption-input').value = result.caption;
+                  status.textContent = 'suggestion ready — review it, then save';
+                } catch (error) {
+                  status.textContent = error instanceof Error ? error.message : 'caption suggestion failed';
+                } finally {
+                  button.disabled = false;
+                }
+              });
             `}} />
           </div>
 
@@ -1174,6 +1214,14 @@ app.get("/admin/photos/:id", async (c) => {
                 <div><strong>focal length</strong>{exif.focal_length ? `${exif.focal_length}mm` : "—"}</div>
                 <div><strong>location</strong>{exif.gps_latitude && exif.gps_longitude ? `${Number(exif.gps_latitude).toFixed(4)}, ${Number(exif.gps_longitude).toFixed(4)}` : "—"}</div>
               </div>
+              {mapUrl && (
+                <>
+                  <iframe class="location-map" src={mapUrl} loading="lazy" referrerpolicy="no-referrer" title="Map around photo GPS coordinates" />
+                  <p style="font-size: 0.72rem; color: var(--color-text-muted); margin-bottom: 0;">
+                    Pan and zoom to find a nearby city, park, or landmark. Map tiles load from OpenStreetMap only in this Access-protected admin view.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -1290,6 +1338,53 @@ app.patch("/api/admin/photos/:id", async (c) => {
   } catch (error) {
     return c.json({ error: "Update failed" }, 500);
   }
+});
+
+app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
+  const id = c.req.param("id");
+  const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?")
+    .bind(id)
+    .first<Photo>();
+  if (!photo) return c.json({ error: "Photo not found" }, 404);
+
+  const transformKey = `${photo.r2_key}/w800.webp`;
+  const image = await c.env.PHOTOS_BUCKET.get(transformKey)
+    || await getOrCreateTransform(c.env, c.executionCtx, photo, 800, transformKey);
+  if (!image) return c.json({ error: "Could not prepare image for captioning" }, 409);
+
+  const bytes = new Uint8Array(await image.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  const examples = await c.env.DB.prepare(`
+    SELECT title FROM photos
+    WHERE title IS NOT NULL AND trim(title) != ''
+    ORDER BY date DESC, created_at DESC
+    LIMIT 16
+  `).all<{ title: string }>();
+  const prompt = [
+    "Write one understated, specific outdoor photo caption in Kylie's existing title style.",
+    "Use 3 to 9 words. Sentence case. No hashtags, emoji, quotation marks, or final period.",
+    "Do not invent a place, person, weather condition, or activity that is not visibly certain.",
+    photo.title ? `Current title: ${photo.title}` : "",
+    photo.location ? `Known location: ${photo.location}` : "",
+    `Style examples: ${examples.results.map(({ title }) => title).join("; ")}`,
+    "Return only the caption.",
+  ].filter(Boolean).join("\n");
+
+  const result = await c.env.AI.run("@cf/moondream/moondream3.1-9B-A2B", {
+    task: "query",
+    image: `data:image/webp;base64,${btoa(binary)}`,
+    question: prompt,
+    reasoning: false,
+    temperature: 0.25,
+    max_tokens: 48,
+  });
+  const raw = "answer" in result && typeof result.answer === "string" ? result.answer : "";
+  const caption = raw.trim().replace(/^['"]|['"]$/g, "").replace(/\.$/, "").slice(0, 200);
+  if (!caption) return c.json({ error: "AI returned no caption" }, 502);
+  return c.json({ caption, model: "@cf/moondream/moondream3.1-9B-A2B" });
 });
 
 // DELETE /api/admin/photos/{id} - Delete photo
@@ -1429,7 +1524,9 @@ app.post("/api/admin/upload", async (c) => {
   const arrayBuffer = await file.arrayBuffer();
   const profile = await profilePhoto(arrayBuffer);
   const effectiveDate = date || dateInputValue(profile?.dateTaken ?? null);
-  const effectiveLocation = location || await locationFromExistingPhotos(c.env.DB, profile, file.name);
+  const effectiveLocation = location || await locationFromExistingPhotos(
+    c.env.DB, profile?.latitude, profile?.longitude, file.name
+  );
   const hashBytes = await crypto.subtle.digest("SHA-256", arrayBuffer);
   const sha256 = Array.from(new Uint8Array(hashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const duplicate = await c.env.DB.prepare("SELECT id FROM photos WHERE sha256 = ? LIMIT 1")
