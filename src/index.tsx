@@ -516,12 +516,24 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         .ai-caption-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
         .ai-caption-button { border: 1px solid var(--color-accent-light); background: var(--color-accent-light); color: var(--color-accent); border-radius: var(--radius-sm); padding: 0.3rem 0.55rem; font: inherit; font-size: 0.7rem; cursor: pointer; }
         .edit-status { min-height: 1.25rem; font-size: 0.8rem; color: var(--color-text-muted); }
+        .edit-status.saved { color: #15803d; font-weight: 700; animation: saved-pop 500ms cubic-bezier(.22,1,.36,1); }
+        .edit-status.saved::before { content: '✓'; display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-right: 0.4rem; border-radius: 50%; background: #16a34a; color: white; }
+        @keyframes saved-pop { 0% { opacity: 0; transform: translateY(4px) scale(.9); } 60% { transform: translateY(0) scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+        @media (prefers-reduced-motion: reduce) { .edit-status.saved { animation: none; } }
         .exif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); font-size: 0.8rem; }
         .exif-grid div { padding: var(--space-sm); background: var(--color-bg); border-radius: var(--radius-sm); }
         .exif-grid strong { display: block; color: var(--color-text-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; }
         .location-map { width: 100%; height: 280px; border: 0; border-radius: var(--radius-md); margin-top: var(--space-md); }
         .location-suggestion { margin-top: var(--space-sm); padding: 0.65rem; border-radius: var(--radius-md); background: var(--color-accent-light); font-size: 0.8rem; }
         .location-suggestion button { margin-left: var(--space-sm); border: 0; background: var(--color-accent); color: white; border-radius: var(--radius-sm); padding: 0.3rem 0.6rem; cursor: pointer; }
+        .reference-group { margin-bottom: var(--space-md); }
+        .reference-group h3 { margin: 0 0 var(--space-xs); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); }
+        .reference-list { margin: 0; padding-left: 1.1rem; font-size: 0.78rem; max-height: 140px; overflow: auto; }
+        .reference-actions { display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-top: var(--space-md); }
+        .reference-actions button { border: 1px solid #ddd; background: white; border-radius: var(--radius-sm); padding: 0.5rem 0.7rem; cursor: pointer; }
+        .alias-confirm { display: grid; gap: var(--space-xs); margin-top: var(--space-md); }
+        .alias-confirm input { width: 100%; padding: 0.55rem; border: 1px solid #ddd; border-radius: var(--radius-sm); }
+        .alias-confirm button { border: 1px solid #fecaca; background: #fff; color: #b91c1c; border-radius: var(--radius-sm); padding: 0.55rem; cursor: pointer; }
         @media (max-width: 600px) {
           .admin-main { padding: var(--space-md); }
           .upload-panel { padding: var(--space-lg); }
@@ -1089,6 +1101,12 @@ app.get("/admin/photos/:id", async (c) => {
   const mapUrl = latitude != null && longitude != null
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.15}%2C${latitude - 0.1}%2C${longitude + 0.15}%2C${latitude + 0.1}&layer=mapnik&marker=${latitude}%2C${longitude}`
     : null;
+  const [aliases, collections, climbs, people] = await Promise.all([
+    c.env.DB.prepare("SELECT alias, kind FROM photo_aliases WHERE photo_id = ? ORDER BY kind, alias").bind(id).all<{ alias: string; kind: string }>(),
+    c.env.DB.prepare("SELECT collection_slug FROM photo_collections WHERE photo_id = ? ORDER BY collection_slug").bind(id).all<{ collection_slug: string }>(),
+    c.env.DB.prepare("SELECT climb_id FROM photo_climb_links WHERE photo_id = ? ORDER BY climb_id").bind(id).all<{ climb_id: string }>(),
+    c.env.DB.prepare("SELECT person_slug FROM photo_people WHERE photo_id = ? ORDER BY person_slug").bind(id).all<{ person_slug: string }>(),
+  ]);
 
   const origin = new URL(c.req.url).origin;
   const standardWidths = [200, 400, 800, 1600];
@@ -1154,6 +1172,7 @@ app.get("/admin/photos/:id", async (c) => {
                 const button = form.querySelector('button');
                 const status = document.getElementById('edit-status');
                 button.disabled = true;
+                status.classList.remove('saved');
                 status.textContent = 'saving…';
                 const data = new FormData(form);
                 const tags = String(data.get('tags') || '').split(',').map(tag => tag.trim()).filter(Boolean);
@@ -1176,7 +1195,8 @@ app.get("/admin/photos/:id", async (c) => {
                   });
                   const result = await response.json();
                   if (!response.ok) throw new Error(result.error || 'save failed');
-                  status.textContent = 'saved';
+                  status.textContent = 'Saved';
+                  status.classList.add('saved');
                 } catch (error) {
                   status.textContent = error instanceof Error ? error.message : 'save failed';
                 } finally {
@@ -1187,6 +1207,7 @@ app.get("/admin/photos/:id", async (c) => {
                 const button = event.currentTarget;
                 const status = document.getElementById('edit-status');
                 button.disabled = true;
+                status.classList.remove('saved');
                 status.textContent = 'looking at the photo…';
                 try {
                   const response = await fetch('/api/admin/photos/${photo.id}/caption-suggestion', { method: 'POST' });
@@ -1224,6 +1245,48 @@ app.get("/admin/photos/:id", async (c) => {
               )}
             </div>
           )}
+
+          <div class="detail-panel">
+            <h2>references</h2>
+            <div class="reference-group">
+              <h3>aliases ({aliases.results.length})</h3>
+              {aliases.results.length ? <ul class="reference-list">{aliases.results.map((row) => <li><code>{row.alias}</code> · {row.kind}</li>)}</ul> : <span>none</span>}
+            </div>
+            <div class="reference-group"><h3>collections ({collections.results.length})</h3>{collections.results.length ? <ul class="reference-list">{collections.results.map((row) => <li>{row.collection_slug}</li>)}</ul> : <span>none</span>}</div>
+            <div class="reference-group"><h3>climbs ({climbs.results.length})</h3>{climbs.results.length ? <ul class="reference-list">{climbs.results.map((row) => <li><code>{row.climb_id}</code></li>)}</ul> : <span>none</span>}</div>
+            <div class="reference-group"><h3>people ({people.results.length})</h3>{people.results.length ? <ul class="reference-list">{people.results.map((row) => <li>{row.person_slug}</li>)}</ul> : <span>none</span>}</div>
+            {(collections.results.length > 0 || climbs.results.length > 0 || people.results.length > 0) && (
+              <div class="reference-actions">
+                <button id="unlink-non-alias" type="button">unlink collections, climbs & people</button>
+              </div>
+            )}
+            {aliases.results.length > 0 && (
+              <div class="alias-confirm">
+                <label>Aliases may be published. Type <code>{photo.id}</code> to remove them.</label>
+                <input id="alias-confirm-id" autocomplete="off" />
+                <button id="remove-aliases" type="button">remove all aliases</button>
+              </div>
+            )}
+            <div id="reference-status" class="edit-status" aria-live="polite"></div>
+            <script dangerouslySetInnerHTML={{ __html: `
+              const referenceStatus = document.getElementById('reference-status');
+              async function removeReferences(type, confirmation) {
+                const params = new URLSearchParams({ type, confirm: confirmation });
+                const response = await fetch('/api/admin/photos/${photo.id}/references?' + params, { method: 'DELETE' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'unlink failed');
+                referenceStatus.textContent = 'references removed; reload to review';
+              }
+              document.getElementById('unlink-non-alias')?.addEventListener('click', async () => {
+                if (!confirm('Unlink this photo from collections, climbs, and people?')) return;
+                try { await removeReferences('non-alias', '${photo.id}'); } catch (error) { referenceStatus.textContent = error.message; }
+              });
+              document.getElementById('remove-aliases')?.addEventListener('click', async () => {
+                const confirmation = document.getElementById('alias-confirm-id').value;
+                try { await removeReferences('aliases', confirmation); } catch (error) { referenceStatus.textContent = error.message; }
+              });
+            `}} />
+          </div>
 
           <div class="detail-panel">
             <h2>metadata</h2>
@@ -1385,6 +1448,28 @@ app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
   const caption = raw.trim().replace(/^['"]|['"]$/g, "").replace(/\.$/, "").slice(0, 200);
   if (!caption) return c.json({ error: "AI returned no caption" }, 502);
   return c.json({ caption, model: "@cf/moondream/moondream3.1-9B-A2B" });
+});
+
+app.delete("/api/admin/photos/:id/references", async (c) => {
+  const id = c.req.param("id");
+  if (c.req.query("confirm") !== id) return c.json({ error: "Confirmation must match the photo ID" }, 400);
+  const photo = await c.env.DB.prepare("SELECT id FROM photos WHERE id = ?").bind(id).first();
+  if (!photo) return c.json({ error: "Photo not found" }, 404);
+
+  const type = c.req.query("type");
+  if (type === "non-alias") {
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM photo_collections WHERE photo_id = ?").bind(id),
+      c.env.DB.prepare("DELETE FROM photo_climb_links WHERE photo_id = ?").bind(id),
+      c.env.DB.prepare("DELETE FROM photo_people WHERE photo_id = ?").bind(id),
+    ]);
+    return c.json({ removed: "non-alias", changes: results.reduce((sum, result) => sum + (result.meta.changes || 0), 0) });
+  }
+  if (type === "aliases") {
+    const result = await c.env.DB.prepare("DELETE FROM photo_aliases WHERE photo_id = ?").bind(id).run();
+    return c.json({ removed: "aliases", changes: result.meta.changes || 0 });
+  }
+  return c.json({ error: "type must be non-alias or aliases" }, 400);
 });
 
 // DELETE /api/admin/photos/{id} - Delete photo
