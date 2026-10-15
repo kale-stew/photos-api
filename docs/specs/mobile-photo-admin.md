@@ -13,12 +13,16 @@ offline background uploader.
 ## Current State
 
 - Cloudflare Access protects `/admin*` and `/api/admin/*`.
-- `/admin` lists public, non-excluded photos and `/admin/photos/:id` displays
-  metadata and generated sizes.
-- `POST /api/admin/upload` accepts one JPEG, PNG, or WebP up to 20 MB.
-- `PATCH /api/admin/photos/:id` edits metadata, lifecycle, and visibility.
-- There is no upload UI, the detail page is read-only, and uploads do not use
-  `sha256` for duplicate detection.
+- `/admin` supports search, filters, pagination, selection, and safe bulk
+  publication/lifecycle updates.
+- `/admin/upload` uploads JPEG, PNG, WebP, HEIC, and HEIF sequentially with SHA
+  duplicate reuse, destination controls, and optional formal hike assignment.
+- `/admin/photos/:id` edits metadata, lifecycle, visibility, hike assignment,
+  references, and shows protected EXIF plus an interactive map.
+- AI caption suggestions use the existing title corpus for tone and require
+  explicit review and save.
+- Direct deletion quarantines first, blocks unresolved references, deletes and
+  verifies the R2 prefix, then removes D1 metadata.
 - The older `feature/mcp` spike contains useful search and EXIF ideas, but its
   migration numbers conflict with the canonical migration chain. Reimplement
   deliberately instead of cherry-picking it.
@@ -109,22 +113,30 @@ After upload works:
   destination, and result without logging tokens or image bytes.
 - Preserve quarantine-before-delete and reference checks.
 
-## Delivery Sequence
+## Delivery Status
 
-1. Upload page for JPEG/PNG/WebP, SHA dedupe, destination mapping, and immediate
-   transform verification.
-2. Mobile Safari and Android Chrome testing, including interruption and retry.
-3. Editable detail page and admin search/filtering.
-4. HEIC handling based on captured test files.
-5. Retire the duplicate `climb-log` photo admin after redirects and climb mapper
-   dependencies are verified.
+- [x] Mobile upload page, SHA dedupe, destination mapping, and transform verification
+- [x] Editable metadata and visible save confirmation
+- [x] Search, filters, pagination, selection, and bulk publication updates
+- [x] HEIC profiling and production HEIC-to-WebP transform test
+- [x] Protected EXIF, map review, and conservative known-location suggestions
+- [x] AI caption suggestions with manual review
+- [x] Reference inspection/unlinking and safe physical deletion
+- [x] Formal hike selection on upload/edit and canonical primary previews
+- [ ] Test camera capture and five-photo selection on physical iOS and Android devices
+- [ ] Add explicit per-file idempotency keys beyond SHA duplicate detection
+- [ ] Add upload rate limits and actor-aware audit records
+- [ ] Add search/filtering to the hike selector on the edit page
+- [ ] Switch `climb-log` gallery from compatibility listing to `portfolio`
+- [ ] Redirect and retire legacy `climb-log` photo admin routes
+- [ ] Stop legacy photo cron writes, then audit and retire duplicate D1/R2 storage
 
 ## Acceptance Checks
 
-- Upload one camera photo and a five-photo library selection from an iPhone.
-- Retry an interrupted upload without creating duplicate D1 or R2 records.
-- Upload a known duplicate and receive the existing canonical ID.
-- Verify Portfolio appears publicly; Editorial resolves by ID but is absent
+- [ ] Upload one camera photo and a five-photo library selection from an iPhone.
+- [ ] Retry an interrupted upload without creating duplicate D1 or R2 records.
+- [x] Upload a known duplicate and receive the existing canonical ID.
+- [x] Verify Portfolio appears publicly; Editorial resolves by ID but is absent
   from listings; Private is unavailable publicly.
-- Edit metadata, copy a canonical URL, and see the 800px transform.
-- Confirm unauthenticated and cross-origin mutations fail.
+- [x] Edit metadata, copy a canonical URL, and see the 800px transform.
+- [x] Confirm unauthenticated and cross-origin mutations fail.
