@@ -551,6 +551,9 @@ const requireAccess = async (c: Context<{ Bindings: AppEnv }>, next: Next) => {
   await next();
 };
 
+// Access protects /admin/* but not the exact /admin path. Enter through the
+// protected trailing-slash route so first-time visitors receive a login flow.
+app.get("/admin", (c) => c.redirect("/admin/", 302));
 app.use("/admin", requireAccess);
 app.use("/admin/*", requireAccess);
 
@@ -779,10 +782,8 @@ app.get("/", (c) => c.redirect("/docs", 302));
 
 // ============ ADMIN UI ROUTES ============
 
-app.get("/admin/", (c) => c.redirect("/admin", 302));
-
-// GET /admin - Photo Grid
-app.get("/admin", async (c) => {
+// GET /admin/ - Photo Grid
+app.get("/admin/", async (c) => {
   const url = new URL(c.req.url);
   const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
   const page = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
