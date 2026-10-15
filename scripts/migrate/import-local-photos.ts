@@ -68,7 +68,8 @@ interface PlanOptions {
 interface CliOptions extends PlanOptions {
   manifest: string;
   apply: boolean;
-  remote: boolean;
+  accountId?: string;
+  databaseId?: string;
   approve?: string;
 }
 
@@ -103,7 +104,8 @@ export function parseArgs(): CliOptions {
     resolutions: resolve(getArgument("resolutions") || DEFAULTS.resolutions),
     manifest: resolve(getArgument("manifest") || DEFAULTS.manifest),
     apply: process.argv.includes("--apply"),
-    remote: process.argv.includes("--remote"),
+    accountId: getArgument("account-id") || process.env.CLOUDFLARE_ACCOUNT_ID,
+    databaseId: getArgument("database-id") || process.env.PHOTOS_DATABASE_ID,
     approve: getArgument("approve"),
   };
 }
@@ -247,13 +249,21 @@ function sqlString(value: string | null): string {
   return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
 }
 
-function wrangler(args: string[], options: { encoding?: "utf8" } = {}): string {
-  return execFileSync("npx", ["wrangler", ...args], { encoding: options.encoding || "utf8", stdio: ["ignore", "pipe", "pipe"] });
+let cloudflareTarget: { accountId: string; databaseId: string } | undefined;
+
+function cf(args: string[], options: { encoding?: "utf8" | "buffer" } = {}): string | Buffer {
+  if (!cloudflareTarget) throw new Error("Cloudflare target is not configured");
+  return execFileSync("cf", args, {
+    encoding: options.encoding === "buffer" ? "buffer" : "utf8",
+    env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: cloudflareTarget.accountId },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
 function query(sql: string): Record<string, unknown>[] {
-  const output = wrangler(["d1", "execute", "photos-db", "--remote", `--command=${sql}`, "--json"]);
-  return JSON.parse(output.slice(output.indexOf("[")))[0]?.results || [];
+  if (!cloudflareTarget) throw new Error("Cloudflare target is not configured");
+  const output = cf(["d1", "query", cloudflareTarget.databaseId, "--sql", sql], { encoding: "utf8" }) as string;
+  return JSON.parse(output)[0]?.results || [];
 }
 
 async function sourceBuffer(photo: ImportPhoto, options: PlanOptions): Promise<Buffer> {
@@ -265,24 +275,22 @@ async function sourceBuffer(photo: ImportPhoto, options: PlanOptions): Promise<B
 async function uploadAndVerify(photo: ImportPhoto, buffer: Buffer): Promise<void> {
   const tempDirectory = await mkdtemp(join(tmpdir(), "photos-import-"));
   const sourcePath = join(tempDirectory, `original.${photo.format}`);
-  const verifyPath = join(tempDirectory, `verify.${photo.format}`);
-  const object = `photos-bucket/${photo.r2Key}/original.${photo.format}`;
+  const objectKey = `${photo.r2Key}/original.${photo.format}`;
   try {
     await writeFile(sourcePath, buffer);
-    let exists = true;
+    let current: Buffer | null = null;
     try {
-      wrangler(["r2", "object", "get", object, "--remote", `--file=${verifyPath}`]);
+      current = cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" }) as Buffer;
     } catch {
-      exists = false;
+      // Missing objects are uploaded below.
     }
-    if (exists) {
-      const current = await readFile(verifyPath);
+    if (current) {
       if (sha256(current) !== photo.sha256) throw new Error(`R2 object differs for ${photo.id}`);
       return;
     }
-    wrangler(["r2", "object", "put", object, "--remote", `--file=${sourcePath}`, `--content-type=image/${photo.format}`]);
-    wrangler(["r2", "object", "get", object, "--remote", `--file=${verifyPath}`]);
-    if (sha256(await readFile(verifyPath)) !== photo.sha256) throw new Error(`R2 verification failed for ${photo.id}`);
+    cf(["r2", "objects", "put", objectKey, "--bucket-name", "photos-bucket", `--file=${sourcePath}`, `--content-type=image/${photo.format}`]);
+    const verified = cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" }) as Buffer;
+    if (sha256(verified) !== photo.sha256) throw new Error(`R2 verification failed for ${photo.id}`);
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
@@ -366,7 +374,10 @@ function preflightManifest(manifest: ImportManifest): void {
 }
 
 export async function applyManifest(manifest: ImportManifest, options: CliOptions): Promise<void> {
-  if (!options.remote || !options.approve) throw new Error("Apply requires --remote and --approve=<manifest-sha256>");
+  if (!options.accountId || !options.databaseId || !options.approve) {
+    throw new Error("Apply requires --account-id, --database-id, and --approve=<manifest-sha256>");
+  }
+  cloudflareTarget = { accountId: options.accountId, databaseId: options.databaseId };
   const manifestBytes = await readFile(options.manifest);
   if (sha256(manifestBytes) !== options.approve) throw new Error("Manifest approval digest does not match");
   const migrations = query("SELECT name FROM d1_migrations WHERE name = '0004_add_photo_sha256.sql'");

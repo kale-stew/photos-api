@@ -22,12 +22,13 @@
     "backfill:aliases": "npx tsx scripts/migrate/backfill-photo-aliases.ts",
     "generate:blurhash": "npx tsx scripts/migrate/generate-blurhash.ts",
     "import:local:plan": "npx tsx scripts/migrate/import-local-photos.ts",
-    "import:local:apply": "npx tsx scripts/migrate/import-local-photos.ts --apply --remote",
+    "import:local:apply": "npx tsx scripts/migrate/import-local-photos.ts --apply",
     "test:import-local": "npx tsx --test scripts/migrate/import-local-photos.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260524.1",
     "@types/node": "^25.9.1",
+    "cf": "^1.0.0-beta.17",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "wrangler": "^4.14.0"
