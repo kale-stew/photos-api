@@ -477,7 +477,12 @@ type AppEnv = Env & {
 const accessJwks = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 async function verifyAccessJWT(request: Request, env: AppEnv): Promise<boolean> {
-  const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
+  const cookieJwt = request.headers.get("Cookie")
+    ?.split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith("CF_Authorization="))
+    ?.slice("CF_Authorization=".length);
+  const jwt = request.headers.get("Cf-Access-Jwt-Assertion") || cookieJwt;
   if (!jwt || !env.CF_ACCESS_TEAM_DOMAIN || !env.CF_ACCESS_AUD) return false;
 
   try {
@@ -773,6 +778,8 @@ app.get("/api/photos/:id", async (c) => {
 app.get("/", (c) => c.redirect("/docs", 302));
 
 // ============ ADMIN UI ROUTES ============
+
+app.get("/admin/", (c) => c.redirect("/admin", 302));
 
 // GET /admin - Photo Grid
 app.get("/admin", async (c) => {
