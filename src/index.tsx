@@ -1116,11 +1116,28 @@ async function getOrCreateTransform(
       const original = await env.PHOTOS_BUCKET.get(originalKey);
       if (!original) return null;
 
-      const transformed = await env.IMAGES.input(original.body)
-        .transform({ width, fit: "scale-down" })
-        .output({ format: "image/webp", quality: 85 });
+      const transform = async (input: ReadableStream): Promise<ArrayBuffer> => {
+        const transformed = await env.IMAGES.input(input)
+          .transform({ width, fit: "scale-down" })
+          .output({ format: "image/webp", quality: 85 });
+        return transformed.response().arrayBuffer();
+      };
 
-      const transformedBuffer = await transformed.response().arrayBuffer();
+      let transformedBuffer: ArrayBuffer;
+      try {
+        transformedBuffer = await transform(original.body);
+      } catch (originalError) {
+        // Some migrated originals are malformed or much larger than their
+        // metadata indicates. Their retained source URL is the safest repair
+        // input; the generated WebP is still written to canonical R2.
+        if (!photo.source_url) throw originalError;
+        const sourceUrl = new URL(photo.source_url);
+        if (!["http:", "https:"].includes(sourceUrl.protocol)) throw originalError;
+
+        const source = await fetch(sourceUrl, { headers: { Accept: "image/*" } });
+        if (!source.ok || !source.body) throw originalError;
+        transformedBuffer = await transform(source.body);
+      }
 
       await env.PHOTOS_BUCKET.put(targetKey, transformedBuffer, {
         httpMetadata: { contentType: "image/webp" },
