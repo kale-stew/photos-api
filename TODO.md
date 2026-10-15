@@ -1,5 +1,9 @@
 # Photos API - Post-Migration TODO
 
+> **Status: paused historical snapshot (May 2026).** Counts, branch references,
+> and Wrangler commands below are stale. Use `docs/specs/README.md` for current
+> status and move any still-useful task into a maintained spec before acting.
+
 ## After Migration Completes (573 photos)
 
 ### 1. Backfill Climb Links

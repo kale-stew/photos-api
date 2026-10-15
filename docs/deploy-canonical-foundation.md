@@ -1,5 +1,10 @@
 # Deploy Runbook: Canonical Foundation (main)
 
+> **Status: historical.** The foundation deployment is complete. This file
+> documents the original rollout and is not a current deployment runbook. Use
+> `cloudflare.config.ts`, `cf`, and the repository's current `AGENTS.md` instead
+> of executing the Wrangler-era commands below.
+
 One-time deploy of the merged canonical photo service (`0003_canonical_photo_service.sql`
 schema + alias-aware routes + Cloudflare Access enforcement) to production.
 

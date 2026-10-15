@@ -1,5 +1,9 @@
 # Canonical Photo Service
 
+> **Status: active architecture; migration sections need a post-import refresh.**
+> Preserve the ownership, identifier, visibility, and deletion rules. Rework
+> one-time cutover steps after canonical import and consumer retirement finish.
+
 ## Summary
 
 `photos-api` is the single source of truth for photo metadata, originals, transforms, stable identifiers, publication state, and relationships used by `kylies.photos` and `kylieis.online`.
