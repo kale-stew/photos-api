@@ -92,6 +92,14 @@ export function desktopPhotoId(imageSha256: string): string {
   return sha256(`desktop\0${imageSha256}`).slice(0, 12);
 }
 
+export function publicationFor(
+  collection: ImportPhoto["collection"]
+): { exclude: number; visibility: "public" | "unlisted" } {
+  return collection === "portfolio"
+    ? { exclude: 0, visibility: "public" }
+    : { exclude: 1, visibility: "unlisted" };
+}
+
 function getArgument(name: string): string | undefined {
   const prefix = `--${name}=`;
   return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
@@ -306,6 +314,7 @@ async function commitPhoto(photo: ImportPhoto): Promise<void> {
     if (existing && existing.photo_id !== photo.id) throw new Error(`Alias conflict for ${alias}`);
   }
 
+  const { exclude, visibility } = publicationFor(photo.collection);
   const inserts = photo.action === "create" ? `
     INSERT OR IGNORE INTO photos (
       id, r2_key, title, caption, location, date, width, height, format, size_bytes,
@@ -314,7 +323,7 @@ async function commitPhoto(photo: ImportPhoto): Promise<void> {
       ${sqlString(photo.id)}, ${sqlString(photo.r2Key)}, ${sqlString(photo.title)}, ${sqlString(photo.caption)},
       ${sqlString(photo.location)}, ${sqlString(photo.date)}, ${photo.width}, ${photo.height}, ${sqlString(photo.format)},
       ${photo.sizeBytes}, 'climb-log', ${sqlString(photo.sourceKind)}, ${sqlString(JSON.stringify(photo.tags))},
-      1, 'active', 'unlisted', ${sqlString(photo.sha256)}
+      ${exclude}, 'active', ${sqlString(visibility)}, ${sqlString(photo.sha256)}
     );` : "";
   const aliases = photo.aliases.map(({ alias, kind }) => `
     INSERT OR IGNORE INTO photo_aliases (alias, photo_id, kind)

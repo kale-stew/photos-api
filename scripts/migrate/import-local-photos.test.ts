@@ -4,12 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import sharp from "sharp";
-import { buildManifest, desktopPhotoId, publishedShortId, sha256 } from "./import-local-photos.js";
+import { buildManifest, desktopPhotoId, publicationFor, publishedShortId, sha256 } from "./import-local-photos.js";
 
 test("preserves published short IDs and creates stable Desktop IDs", () => {
   assert.equal(publishedShortId("blog-51861129420"), "0a8224b1");
   assert.equal(desktopPhotoId("a".repeat(64)), desktopPhotoId("a".repeat(64)));
   assert.equal(desktopPhotoId("a".repeat(64)).length, 12);
+});
+
+test("publishes portfolio photos while keeping editorial assets unlisted", () => {
+  assert.deepEqual(publicationFor("portfolio"), { exclude: 0, visibility: "public" });
+  assert.deepEqual(publicationFor("kylies-photos-content"), { exclude: 1, visibility: "unlisted" });
+  assert.deepEqual(publicationFor(null), { exclude: 1, visibility: "unlisted" });
 });
 
 test("builds a deterministic manifest and collapses exact duplicates", async () => {
