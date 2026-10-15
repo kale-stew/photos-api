@@ -651,7 +651,10 @@ const requireAccess = async (c: Context<{ Bindings: AppEnv }>, next: Next) => {
 
 // Access protects /admin/* but not the exact /admin path. Enter through the
 // protected trailing-slash route so first-time visitors receive a login flow.
-app.get("/admin", (c) => c.redirect("/admin/", 302));
+app.get("/admin", (c) => {
+  const url = new URL(c.req.url);
+  return c.redirect(`/admin/${url.search}`, 302);
+});
 app.use("/admin", requireAccess);
 app.use("/admin/*", requireAccess);
 
@@ -952,9 +955,9 @@ app.get("/admin/", async (c) => {
 
           {totalPages > 1 && (
             <div class="pagination">
-              {page > 1 && <a href={`/admin?page=${page - 1}`}>← previous</a>}
+              {page > 1 && <a href={`/admin/?page=${page - 1}`}>← previous</a>}
               <span>page {page} of {totalPages}</span>
-              {page < totalPages && <a href={`/admin?page=${page + 1}`}>next →</a>}
+              {page < totalPages && <a href={`/admin/?page=${page + 1}`}>next →</a>}
             </div>
           )}
           <script dangerouslySetInnerHTML={{ __html: `
