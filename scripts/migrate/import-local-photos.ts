@@ -275,7 +275,7 @@ function cf(args: string[], options: { encoding?: "utf8" | "buffer" } = {}): str
       const message = error instanceof Error
         ? `${error.message} ${"stderr" in error ? String(error.stderr) : ""}`
         : String(error);
-      const transient = /fetch failed|429|5\d\d|timeout|ECONNRESET|ETIMEDOUT/i.test(message);
+      const transient = /fetch failed|unsettled top-level await|429|5\d\d|timeout|ECONNRESET|ETIMEDOUT/i.test(message);
       if (!transient || attempt === 5) throw error;
       console.warn(`Transient cf failure; retrying (${attempt}/5)`);
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500 * 2 ** (attempt - 1));
