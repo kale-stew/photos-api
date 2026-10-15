@@ -261,11 +261,26 @@ let cloudflareTarget: { accountId: string; databaseId: string } | undefined;
 
 function cf(args: string[], options: { encoding?: "utf8" | "buffer" } = {}): string | Buffer {
   if (!cloudflareTarget) throw new Error("Cloudflare target is not configured");
-  return execFileSync("cf", args, {
-    encoding: options.encoding === "buffer" ? "buffer" : "utf8",
-    env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: cloudflareTarget.accountId },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      return execFileSync("cf", args, {
+        encoding: options.encoding === "buffer" ? "buffer" : "utf8",
+        env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: cloudflareTarget.accountId },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error
+        ? `${error.message} ${"stderr" in error ? String(error.stderr) : ""}`
+        : String(error);
+      const transient = /fetch failed|429|5\d\d|timeout|ECONNRESET|ETIMEDOUT/i.test(message);
+      if (!transient || attempt === 5) throw error;
+      console.warn(`Transient cf failure; retrying (${attempt}/5)`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500 * 2 ** (attempt - 1));
+    }
+  }
+  throw lastError;
 }
 
 function query(sql: string): Record<string, unknown>[] {
