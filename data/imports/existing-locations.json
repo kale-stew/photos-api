@@ -1,0 +1,350 @@
+[
+  {
+    "location": "San Juan Range, Colorado",
+    "count": 40
+  },
+  {
+    "location": "Sawatch Range, Colorado",
+    "count": 19
+  },
+  {
+    "location": "Sangre de Cristos, Colorado",
+    "count": 18
+  },
+  {
+    "location": "Mount Baker Snoqualmie NF, Washington",
+    "count": 14
+  },
+  {
+    "location": "Grand County, Utah",
+    "count": 13
+  },
+  {
+    "location": "Elk Range, Colorado",
+    "count": 12
+  },
+  {
+    "location": "Inyo NF, California",
+    "count": 11
+  },
+  {
+    "location": "Escalante- Grand Staircase, Utah",
+    "count": 10
+  },
+  {
+    "location": "Lake Clark NP, Alaska",
+    "count": 10
+  },
+  {
+    "location": "Silver Falls SP, Oregon",
+    "count": 10
+  },
+  {
+    "location": "Georgetown, Colorado",
+    "count": 9
+  },
+  {
+    "location": "Grand Teton NP, Wyoming",
+    "count": 9
+  },
+  {
+    "location": "Arches NP, Utah",
+    "count": 6
+  },
+  {
+    "location": "Sequoia NP, California",
+    "count": 6
+  },
+  {
+    "location": "Capitol Reef NP, Utah",
+    "count": 5
+  },
+  {
+    "location": "Pacifica, California",
+    "count": 5
+  },
+  {
+    "location": "San Rafael Swell, Utah",
+    "count": 5
+  },
+  {
+    "location": "Alabama Hills RA, California",
+    "count": 4
+  },
+  {
+    "location": "Book Cliffs, Colorado",
+    "count": 4
+  },
+  {
+    "location": "Girdwood, Alaska",
+    "count": 4
+  },
+  {
+    "location": "Great Sand Dunes NP, Colorado",
+    "count": 4
+  },
+  {
+    "location": "Kaua\u02bbi, HI",
+    "count": 4
+  },
+  {
+    "location": "San Francisco, California",
+    "count": 4
+  },
+  {
+    "location": "Tenmile Range, Colorado",
+    "count": 4
+  },
+  {
+    "location": "Arapaho NF, Colorado",
+    "count": 3
+  },
+  {
+    "location": "Denali SP, Alaska",
+    "count": 3
+  },
+  {
+    "location": "Golden Gate SP, California",
+    "count": 3
+  },
+  {
+    "location": "San Francisco, CA",
+    "count": 3
+  },
+  {
+    "location": "Sicily, Italy",
+    "count": 3
+  },
+  {
+    "location": "Yosemite National Park, CA",
+    "count": 3
+  },
+  {
+    "location": "Black Ridge Canyons Wilderness, Colorado",
+    "count": 2
+  },
+  {
+    "location": "Bodega Bay, California",
+    "count": 2
+  },
+  {
+    "location": "Bryce Canyon NP, Utah",
+    "count": 2
+  },
+  {
+    "location": "Catania, Italy",
+    "count": 2
+  },
+  {
+    "location": "Colorado Springs, Colorado",
+    "count": 2
+  },
+  {
+    "location": "Death Valley NP, California",
+    "count": 2
+  },
+  {
+    "location": "Glen Canyon RA, Utah",
+    "count": 2
+  },
+  {
+    "location": "Goblin Valley SP, Utah",
+    "count": 2
+  },
+  {
+    "location": "Muddy Creek WA, Utah",
+    "count": 2
+  },
+  {
+    "location": "Navajo County, Arizona",
+    "count": 2
+  },
+  {
+    "location": "Red Cliffs Conservancy, Utah",
+    "count": 2
+  },
+  {
+    "location": "Yachats, Oregon",
+    "count": 2
+  },
+  {
+    "location": "Aspen-Snowmass, CO",
+    "count": 1
+  },
+  {
+    "location": "Baker Beach, SF, CA",
+    "count": 1
+  },
+  {
+    "location": "Behind the Rocks Wilderness, Utah",
+    "count": 1
+  },
+  {
+    "location": "Bellevue, Washington",
+    "count": 1
+  },
+  {
+    "location": "Boulder, CO",
+    "count": 1
+  },
+  {
+    "location": "Boulder, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Caribou- Targhee NF, Idaho",
+    "count": 1
+  },
+  {
+    "location": "Chicago, IL",
+    "count": 1
+  },
+  {
+    "location": "Chugach NF, Alaska",
+    "count": 1
+  },
+  {
+    "location": "Coconino County, Arizona",
+    "count": 1
+  },
+  {
+    "location": "Coconino NF, AZ",
+    "count": 1
+  },
+  {
+    "location": "Dominguez- Escalante National Conservation Area, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Durango, Colorado",
+    "count": 1
+  },
+  {
+    "location": "El Granada, California",
+    "count": 1
+  },
+  {
+    "location": "Fairbanks, Alaska",
+    "count": 1
+  },
+  {
+    "location": "Healdsburg, California",
+    "count": 1
+  },
+  {
+    "location": "Inner Sunset, SF, CA",
+    "count": 1
+  },
+  {
+    "location": "James Peak WA, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Kane County, Utah",
+    "count": 1
+  },
+  {
+    "location": "Kilimanjaro National Park, Tanzania",
+    "count": 1
+  },
+  {
+    "location": "Langsundkjeften, Norway",
+    "count": 1
+  },
+  {
+    "location": "Leadville, CO",
+    "count": 1
+  },
+  {
+    "location": "Lihue, HI",
+    "count": 1
+  },
+  {
+    "location": "Loveland Pass, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Mammoth Lakes, CA",
+    "count": 1
+  },
+  {
+    "location": "Montara, California",
+    "count": 1
+  },
+  {
+    "location": "Mosquito Range, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Mount Evans WA, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Mount Rainier NP, Washington",
+    "count": 1
+  },
+  {
+    "location": "North Wash, UT",
+    "count": 1
+  },
+  {
+    "location": "Oahu, HI",
+    "count": 1
+  },
+  {
+    "location": "Ocean Beach, SF, CA",
+    "count": 1
+  },
+  {
+    "location": "Pacifica, CA",
+    "count": 1
+  },
+  {
+    "location": "Page, Arizona",
+    "count": 1
+  },
+  {
+    "location": "Palisade, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Pinnacles NP, California",
+    "count": 1
+  },
+  {
+    "location": "San Juan Mountains, CO",
+    "count": 1
+  },
+  {
+    "location": "Sedona, AZ",
+    "count": 1
+  },
+  {
+    "location": "Spring Mountains RA, Nevada",
+    "count": 1
+  },
+  {
+    "location": "Stakkvik, Norway",
+    "count": 1
+  },
+  {
+    "location": "Staunton SP, Colorado",
+    "count": 1
+  },
+  {
+    "location": "Tempe, Arizona",
+    "count": 1
+  },
+  {
+    "location": "Ulisuolu, Norway",
+    "count": 1
+  },
+  {
+    "location": "Vann\u00f8ya, Norway",
+    "count": 1
+  },
+  {
+    "location": "Zion NP, Utah",
+    "count": 1
+  }
+]

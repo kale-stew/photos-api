@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { isHumanLocation, matchExistingLocation, type LocationAnchor } from "../../src/location-matcher.js";
+import { isHumanLocation, matchExistingLocation, matchExistingLocationText, type LocationAnchor, type LocationLabel } from "../../src/location-matcher.js";
 import { dateInputValue, profilePhoto, type PhotoProfile } from "../../src/photo-metadata.js";
 
 interface ImportPhoto {
@@ -41,8 +41,10 @@ const getArgument = (name: string): string | undefined => {
 const importManifestPath = resolve(getArgument("import-manifest") || "data/imports/local-photos.manifest.json");
 const desktopDir = resolve(getArgument("desktop-dir") || "../Desktop Pictures copy");
 const outputPath = resolve(getArgument("output") || "data/imports/local-exif.manifest.json");
+const locationCatalogPath = resolve(getArgument("location-catalog") || "data/imports/existing-locations.json");
 
 const manifest = JSON.parse(await readFile(importManifestPath, "utf8")) as ImportManifest;
+const locationCatalog = JSON.parse(await readFile(locationCatalogPath, "utf8")) as LocationLabel[];
 const updates: ExifUpdate[] = [];
 const profiles = new Map<string, PhotoProfile>();
 
@@ -79,9 +81,11 @@ for (const photo of manifest.photos.filter(({ sourceKind }) => sourceKind === "d
   const matchedLocation = profile.latitude != null && profile.longitude != null
     ? matchExistingLocation(profile.latitude, profile.longitude, anchors)?.location
     : null;
-  const location = matchedLocation || (profile.latitude != null && profile.longitude != null
-    ? `${profile.latitude.toFixed(5)}, ${profile.longitude.toFixed(5)}`
-    : photo.location);
+  // Exact GPS stays in the protected photo_exif row. Only a trusted existing
+  // human label may flow into publicly returned photo metadata.
+  const location = matchedLocation
+    || matchExistingLocationText(`${sourceFile} ${photo.title || ""}`, locationCatalog)?.location
+    || photo.location;
   updates.push({
     id: photo.id,
     sourceFile,
@@ -106,6 +110,9 @@ const output = {
     withDescription: updates.filter(({ profile }) => profile.imageDescription || profile.userComment).length,
     withCamera: updates.filter(({ profile }) => profile.make || profile.model).length,
     matchedHumanLocation: updates.filter(({ updates }) => updates.location && isHumanLocation(updates.location)).length,
+    gpsKeptProtected: updates.filter(({ profile, updates }) =>
+      profile.latitude != null && profile.longitude != null && !updates.location
+    ).length,
   },
   updates,
 };

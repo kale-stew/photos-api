@@ -21,7 +21,7 @@ import { Hono, type Context, type Next } from "hono";
 import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
-import { matchExistingLocation } from "./location-matcher";
+import { matchExistingLocation, matchExistingLocationText } from "./location-matcher";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -67,26 +67,28 @@ function tagsForInput(tags: string | null): string {
   }
 }
 
-async function locationFromExistingPhotos(db: D1Database, profile: PhotoProfile | null): Promise<string | null> {
-  if (profile?.latitude == null || profile.longitude == null) return null;
+async function locationFromExistingPhotos(
+  db: D1Database,
+  profile: PhotoProfile | null,
+  filename: string
+): Promise<string | null> {
   const result = await db.prepare(`
     SELECT p.location, e.gps_latitude, e.gps_longitude
-    FROM photo_exif e
-    JOIN photos p ON p.id = e.photo_id
+    FROM photos p
+    LEFT JOIN photo_exif e ON p.id = e.photo_id
     WHERE p.location IS NOT NULL
-      AND e.gps_latitude IS NOT NULL
-      AND e.gps_longitude IS NOT NULL
     LIMIT 2000
-  `).all<{ location: string; gps_latitude: number; gps_longitude: number }>();
-  return matchExistingLocation(
-    profile.latitude,
-    profile.longitude,
-    result.results.map((row) => ({
+  `).all<{ location: string; gps_latitude: number | null; gps_longitude: number | null }>();
+  const gpsMatch = profile?.latitude != null && profile.longitude != null
+    ? matchExistingLocation(profile.latitude, profile.longitude, result.results.flatMap((row) => (
+      row.gps_latitude != null && row.gps_longitude != null ? [{
       location: row.location,
       latitude: row.gps_latitude,
       longitude: row.gps_longitude,
-    }))
-  )?.location || null;
+      }] : []
+    )))?.location
+    : null;
+  return gpsMatch || matchExistingLocationText(filename, result.results)?.location || null;
 }
 
 // ============ ADMIN LAYOUT & COMPONENTS ============
@@ -1433,7 +1435,7 @@ app.post("/api/admin/upload", async (c) => {
   const arrayBuffer = await file.arrayBuffer();
   const profile = await profilePhoto(arrayBuffer);
   const effectiveDate = date || dateInputValue(profile?.dateTaken ?? null);
-  const effectiveLocation = location || await locationFromExistingPhotos(c.env.DB, profile);
+  const effectiveLocation = location || await locationFromExistingPhotos(c.env.DB, profile, file.name);
   const hashBytes = await crypto.subtle.digest("SHA-256", arrayBuffer);
   const sha256 = Array.from(new Uint8Array(hashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const duplicate = await c.env.DB.prepare("SELECT id FROM photos WHERE sha256 = ? LIMIT 1")
