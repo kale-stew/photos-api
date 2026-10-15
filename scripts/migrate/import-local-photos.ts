@@ -398,6 +398,20 @@ function preflightManifest(manifest: ImportManifest): void {
   }
 }
 
+function completedCreateIds(manifest: ImportManifest): Set<string> {
+  const creates = manifest.photos.filter(({ action }) => action === "create");
+  const expected = new Map(creates.map((photo) => [photo.id, photo]));
+  const completed = new Set<string>();
+  for (const ids of chunks([...expected.keys()], 100)) {
+    const rows = query(`SELECT id, r2_key, sha256 FROM photos WHERE id IN (${ids.map(sqlString).join(",")})`);
+    for (const row of rows) {
+      const photo = expected.get(String(row.id));
+      if (photo && row.r2_key === photo.r2Key && row.sha256 === photo.sha256) completed.add(photo.id);
+    }
+  }
+  return completed;
+}
+
 export async function applyManifest(manifest: ImportManifest, options: CliOptions): Promise<void> {
   if (!options.accountId || !options.databaseId || !options.approve) {
     throw new Error("Apply requires --account-id, --database-id, and --approve=<manifest-sha256>");
@@ -408,10 +422,11 @@ export async function applyManifest(manifest: ImportManifest, options: CliOption
   const migrations = query("SELECT name FROM d1_migrations WHERE name = '0004_add_photo_sha256.sql'");
   if (migrations.length !== 1) throw new Error("Production migration 0004_add_photo_sha256.sql is not applied");
   preflightManifest(manifest);
+  const completed = completedCreateIds(manifest);
 
   for (const [index, photo] of manifest.photos.entries()) {
     console.log(`[${index + 1}/${manifest.photos.length}] ${photo.action} ${photo.id}`);
-    if (photo.action === "create") {
+    if (photo.action === "create" && !completed.has(photo.id)) {
       const buffer = await sourceBuffer(photo, options);
       const inspected = await inspectImage(buffer);
       if (JSON.stringify(inspected) !== JSON.stringify({
