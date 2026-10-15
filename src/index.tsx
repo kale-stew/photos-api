@@ -225,6 +225,27 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           gap: var(--space-xs);
           margin-top: var(--space-sm);
         }
+        .photo-card-actions {
+          display: flex;
+          gap: var(--space-sm);
+          padding: 0 var(--space-md) var(--space-md);
+        }
+        .photo-card-actions a, .photo-card-actions button {
+          flex: 1;
+          min-height: 36px;
+          border-radius: var(--radius-sm);
+          border: 1px solid #ddd;
+          background: white;
+          color: var(--color-text);
+          font: inherit;
+          font-size: 0.75rem;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+        }
+        .photo-card-actions button { color: #b91c1c; border-color: #fecaca; }
         .tag {
           display: inline-block;
           background: var(--color-accent-light);
@@ -823,13 +844,13 @@ app.get("/admin/", async (c) => {
   const offset = (page - 1) * perPage;
 
   const result = await c.env.DB.prepare(
-    "SELECT * FROM photos WHERE exclude = 0 ORDER BY date DESC LIMIT ? OFFSET ?"
+    "SELECT * FROM photos ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?"
   )
     .bind(perPage, offset)
     .all<Photo>();
 
   const countResult = await c.env.DB.prepare(
-    "SELECT COUNT(*) as total FROM photos WHERE exclude = 0"
+    "SELECT COUNT(*) as total FROM photos"
   ).first<{ total: number }>();
 
   const total = countResult?.total || 0;
@@ -854,14 +875,16 @@ app.get("/admin/", async (c) => {
         <>
           <div class="photo-grid">
             {photos.map((photo) => (
-              <a href={`/admin/photos/${photo.id}`} class="photo-card" key={photo.id}>
-                <img
-                  src={`${origin}/img/${photo.id}?w=200`}
-                  alt={photo.title || "photo"}
-                  loading="lazy"
-                />
+              <article class="photo-card" key={photo.id} data-photo-id={photo.id}>
+                <a href={`/admin/photos/${photo.id}`}>
+                  <img
+                    src={`${origin}/img/${photo.id}?w=200`}
+                    alt={photo.title || "photo"}
+                    loading="lazy"
+                  />
+                </a>
                 <div class="photo-card-info">
-                  <div class="photo-card-title">{photo.title || "untitled"}</div>
+                  <a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a>
                   <div class="photo-card-meta">
                     {photo.date ? photo.date : "no date"}
                     {photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}
@@ -869,10 +892,18 @@ app.get("/admin/", async (c) => {
                   {photo.site && (
                     <div class="photo-card-tags">
                       <span class="tag">{photo.site}</span>
+                      <span class="tag">{photo.visibility}</span>
+                      <span class="tag">{photo.status}</span>
                     </div>
                   )}
                 </div>
-              </a>
+                <div class="photo-card-actions">
+                  <a href={`/admin/photos/${photo.id}`}>edit</a>
+                  {photo.source === "upload" && (
+                    <button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button>
+                  )}
+                </div>
+              </article>
             ))}
           </div>
 
@@ -883,6 +914,34 @@ app.get("/admin/", async (c) => {
               {page < totalPages && <a href={`/admin?page=${page + 1}`}>next →</a>}
             </div>
           )}
+          <script dangerouslySetInnerHTML={{ __html: `
+            document.querySelectorAll('.delete-photo').forEach((button) => {
+              button.addEventListener('click', async () => {
+                const id = button.dataset.photoId;
+                if (!id || !confirm('Permanently delete this uploaded photo? This cannot be undone.')) return;
+                button.disabled = true;
+                button.textContent = 'deleting…';
+                try {
+                  const quarantine = await fetch('/api/admin/photos/' + id, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'quarantined' }),
+                  });
+                  if (!quarantine.ok) throw new Error('could not quarantine photo');
+                  const response = await fetch('/api/admin/photos/' + id + '?confirm=' + encodeURIComponent(id), {
+                    method: 'DELETE',
+                  });
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || 'delete failed');
+                  document.querySelector('[data-photo-id="' + CSS.escape(id) + '"]')?.remove();
+                } catch (error) {
+                  button.disabled = false;
+                  button.textContent = 'delete';
+                  alert(error instanceof Error ? error.message : 'delete failed');
+                }
+              });
+            });
+          `}} />
         </>
       )}
     </AdminLayout>
@@ -900,8 +959,8 @@ app.get("/admin/upload", (c) => {
       <form id="upload-form" class="upload-panel" enctype="multipart/form-data">
         <div class="upload-field">
           <label for="images">photos</label>
-          <input id="images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required />
-          <div class="upload-help">JPEG, PNG, or WebP · 20 MB each · uploads run one at a time</div>
+          <input id="images" name="images" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple required />
+          <div class="upload-help">JPEG, PNG, WebP, or HEIC · 20 MB each · uploads run one at a time</div>
         </div>
         <div class="upload-field">
           <label for="destination">destination</label>
@@ -1219,6 +1278,14 @@ app.delete("/api/admin/photos/:id", async (c) => {
 
   if (!photo) return c.json({ error: "Photo not found" }, 404);
 
+  if (c.req.query("confirm") !== id) {
+    return c.json({ error: "Deletion requires confirm=<photo-id>" }, 400);
+  }
+
+  if (photo.source !== "upload") {
+    return c.json({ error: "Only admin-uploaded photos support direct deletion" }, 409);
+  }
+
   if (photo.status !== "quarantined") {
     return c.json({ error: "Photo must be quarantined before deletion" }, 409);
   }
@@ -1226,18 +1293,38 @@ app.delete("/api/admin/photos/:id", async (c) => {
   const references = await c.env.DB.prepare(`
     SELECT
       (SELECT COUNT(*) FROM photo_aliases WHERE photo_id = ?) +
-      (SELECT COUNT(*) FROM photo_collections WHERE photo_id = ?) +
       (SELECT COUNT(*) FROM photo_climb_links WHERE photo_id = ?) +
       (SELECT COUNT(*) FROM photo_people WHERE photo_id = ?) AS total
-  `).bind(id, id, id, id).first<{ total: number }>();
+  `).bind(id, id, id).first<{ total: number }>();
 
   if ((references?.total || 0) > 0) {
     return c.json({ error: "Photo is still referenced", references: references?.total }, 409);
   }
 
-  return c.json({
-    error: "Physical deletion is disabled; use the future audited cleanup workflow",
-  }, 409);
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await c.env.PHOTOS_BUCKET.list({ prefix: `${photo.r2_key}/`, cursor });
+    keys.push(...listed.objects.map((object) => object.key));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  try {
+    for (let index = 0; index < keys.length; index += 1000) {
+      await c.env.PHOTOS_BUCKET.delete(keys.slice(index, index + 1000));
+    }
+    const remaining = await c.env.PHOTOS_BUCKET.list({ prefix: `${photo.r2_key}/`, limit: 1 });
+    if (remaining.objects.length > 0) return c.json({ error: "R2 deletion verification failed" }, 502);
+  } catch {
+    return c.json({ error: "R2 deletion failed; photo remains quarantined" }, 502);
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM photo_collections WHERE photo_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM photos WHERE id = ?").bind(id),
+  ]);
+
+  return c.json({ deleted: true, id, objects: keys.length });
 });
 
 // POST /api/admin/resize - Custom resize
