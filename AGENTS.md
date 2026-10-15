@@ -10,7 +10,7 @@ This repository is the canonical photo metadata, storage, and delivery service f
 | D1 schema changes | `migrations/` |
 | Remote data migrations and backfills | `scripts/` |
 | Integration checks | `scripts/test-integration.ts` |
-| Worker bindings | `wrangler.jsonc` |
+| Worker bindings and deployment | `cloudflare.config.ts` |
 
 Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change says otherwise. Local scripts are Node programs and are not bundled into the Worker.
 
@@ -65,9 +65,10 @@ npm run dev
 npm run test:local
 ```
 
-Run remote migrations and deployment only when explicitly requested. Inspect package scripts before deploying because deployment hooks may perform remote synchronization.
+Run remote migrations and deployment only when explicitly requested. Use the `cf` scripts in `package.json`; `wrangler.jsonc` remains only for legacy migration scripts until they are converted.
 
-- Deployment reads `account_id` and `database_id` from a gitignored `wrangler.local.jsonc`; a fresh clone cannot deploy until it exists.
+- `cloudflare.config.ts` is authoritative for Worker bindings. Keep `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` declared as required secrets so `cf deploy` preserves the existing values.
+- The local photo importer requires `--account-id`, `--database-id`, and the reviewed manifest digest when applying; it uses `cf` for D1 and R2 operations.
 - Deploying admin changes without `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set as Worker vars will return `403` for every `/admin*` and `/api/admin/*` route (deny-by-default), not fail open.
 - When applying a migration out of band (e.g. via the Cloudflare MCP because local `wrangler --remote` is unauthenticated), insert the matching `d1_migrations` row so the ledger stays consistent with `wrangler d1 migrations`.
 

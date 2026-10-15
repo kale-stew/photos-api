@@ -66,6 +66,8 @@ npm run dev
 
 Configure the Worker runtime values `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` outside the repository before deployment. The team domain may be a hostname or full HTTPS origin. Admin routes deny access when either value is missing or invalid and validate Access JWTs against both values.
 
+Authenticate the Cloudflare CLI with `cf auth login`. `cloudflare.config.ts` is the authoritative deployment configuration.
+
 ```bash
 npm run db:migrate:remote
 npm run deploy
@@ -90,6 +92,8 @@ npm run generate:blurhash
 NOTION_API_KEY=xxx
 NOTION_DATABASE_ID=xxx
 FLICKR_API_KEY=xxx
+CLOUDFLARE_ACCOUNT_ID=xxx
+PHOTOS_DATABASE_ID=xxx
 ```
 
 ## schema
