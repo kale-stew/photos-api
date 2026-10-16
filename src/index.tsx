@@ -831,6 +831,33 @@ app.get("/img/:photoId", async (c) => {
   });
 });
 
+const MONTH_NAMES = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+
+function collectionSearchFilter(query: string | undefined): { sql: string; params: string[] } {
+  const q = query?.trim().toLowerCase().slice(0, 100) || "";
+  if (!q) return { sql: "", params: [] };
+
+  const pattern = `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+  const clauses = ["title LIKE ? ESCAPE '\\'", "caption LIKE ? ESCAPE '\\'", "location LIKE ? ESCAPE '\\'", "tags LIKE ? ESCAPE '\\'"]
+    .map((clause) => `p.${clause}`);
+  const params = [pattern, pattern, pattern, pattern];
+
+  if (/^\d{4}$/.test(q)) {
+    clauses.push("p.date LIKE ?");
+    params.push(`${q}%`);
+  }
+  const month = q.length >= 3 ? MONTH_NAMES.findIndex((name) => name.startsWith(q)) : -1;
+  if (month >= 0) {
+    clauses.push("substr(p.date, 6, 2) = ?");
+    params.push(String(month + 1).padStart(2, "0"));
+  }
+
+  return { sql: `AND (${clauses.join(" OR ")})`, params };
+}
+
 // GET /api/photos
 app.get("/api/photos", async (c) => {
   const url = new URL(c.req.url);
@@ -874,21 +901,32 @@ app.get("/api/collections/:slug/photos", async (c) => {
   const limit = Number.isNaN(limitParam) ? 50 : Math.min(Math.max(1, limitParam), 100);
   const offsetParam = parseInt(c.req.query("offset") || "0", 10);
   const offset = Number.isNaN(offsetParam) ? 0 : Math.max(0, offsetParam);
+  const search = collectionSearchFilter(c.req.query("q"));
 
-  const result = await c.env.DB.prepare(`
-    SELECT p.* FROM photos p
-    JOIN photo_collections pc ON pc.photo_id = p.id
+  const where = `
     WHERE pc.collection_slug = ?
       AND p.status = 'active'
       AND p.visibility = 'public'
-    ORDER BY pc.position IS NULL, pc.position, p.date DESC
-    LIMIT ? OFFSET ?
-  `).bind(slug, limit, offset).all<Photo>();
+      ${search.sql}`;
+  const [result, count] = await Promise.all([
+    c.env.DB.prepare(`
+      SELECT p.* FROM photos p
+      JOIN photo_collections pc ON pc.photo_id = p.id
+      ${where}
+      ORDER BY pc.position IS NULL, pc.position, p.date DESC, p.id
+      LIMIT ? OFFSET ?
+    `).bind(slug, ...search.params, limit, offset).all<Photo>(),
+    c.env.DB.prepare(`
+      SELECT COUNT(*) AS total FROM photos p
+      JOIN photo_collections pc ON pc.photo_id = p.id
+      ${where}
+    `).bind(slug, ...search.params).first<{ total: number }>(),
+  ]);
 
   return c.json({
     collection,
     photos: result.results,
-    meta: { limit, offset, count: result.results.length },
+    meta: { limit, offset, count: result.results.length, total: count?.total ?? 0 },
   });
 });
 
