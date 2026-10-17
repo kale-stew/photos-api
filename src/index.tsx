@@ -23,6 +23,14 @@ import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
 import { matchExistingLocation, matchExistingLocationText } from "./location-matcher";
+import {
+  exceedsImagesInputLimit,
+  IMAGES_INPUT_LIMIT_BYTES,
+  originalKey,
+  type TransformInput,
+  transformInputs,
+  transformSourceKey,
+} from "./transform-source";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -1863,10 +1871,12 @@ app.post("/api/admin/upload", async (c) => {
     return c.json({ error: "Only JPEG, PNG, WebP, HEIC, or HEIF allowed" }, 400);
   }
 
-  // Validate file size (20MB)
-  const MAX_SIZE = 20 * 1024 * 1024;
-  if (file.size > MAX_SIZE) {
-    return c.json({ error: "File too large (max 20MB)" }, 400);
+  // The Worker cannot generate previews for originals above the Images input
+  // limit; the local importer creates a transform source for those.
+  if (exceedsImagesInputLimit(file.size)) {
+    return c.json({
+      error: `File too large (max ${IMAGES_INPUT_LIMIT_BYTES / 1_000_000} MB). Import larger originals with the local importer.`,
+    }, 400);
   }
 
   const destinations = {
@@ -2016,8 +2026,11 @@ async function getOrCreateTransform(
     try {
       if (!(await isPhotoActive(env.DB, photo.id))) return null;
 
-      const originalKey = `${photo.r2_key}/original.${photo.format}`;
-      const original = await env.PHOTOS_BUCKET.get(originalKey);
+      const sourceKey = transformSourceKey(photo.r2_key);
+      const [original, transformSource] = await Promise.all([
+        env.PHOTOS_BUCKET.head(originalKey(photo.r2_key, photo.format)),
+        env.PHOTOS_BUCKET.head(sourceKey),
+      ]);
       if (!original) return null;
 
       const transform = async (input: ReadableStream): Promise<ArrayBuffer> => {
@@ -2027,20 +2040,56 @@ async function getOrCreateTransform(
         return transformed.response().arrayBuffer();
       };
 
-      let transformedBuffer: ArrayBuffer;
-      try {
-        transformedBuffer = await transform(original.body);
-      } catch (originalError) {
-        // Some migrated originals are malformed or much larger than their
-        // metadata indicates. Their retained source URL is the safest repair
-        // input; the generated WebP is still written to canonical R2.
-        if (!photo.source_url) throw originalError;
-        const sourceUrl = new URL(photo.source_url);
-        if (!["http:", "https:"].includes(sourceUrl.protocol)) throw originalError;
+      const openInput = async (input: TransformInput): Promise<ReadableStream | null> => {
+        if (input === "original") return (await env.PHOTOS_BUCKET.get(original.key))?.body ?? null;
+        if (input === "transform-source") return (await env.PHOTOS_BUCKET.get(sourceKey))?.body ?? null;
+        if (input === "source-url" && photo.source_url) {
+          // Some migrated originals are malformed or much larger than their
+          // metadata indicates. Their retained source URL is a repair input;
+          // the generated WebP is still written to canonical R2.
+          const sourceUrl = new URL(photo.source_url);
+          if (!["http:", "https:"].includes(sourceUrl.protocol)) return null;
+          const source = await fetch(sourceUrl, { headers: { Accept: "image/*" } });
+          return source.ok ? source.body : null;
+        }
+        return null;
+      };
 
-        const source = await fetch(sourceUrl, { headers: { Accept: "image/*" } });
-        if (!source.ok || !source.body) throw originalError;
-        transformedBuffer = await transform(source.body);
+      const inputs = transformInputs({
+        originalSize: original.size,
+        hasTransformSource: transformSource !== null,
+        hasSourceUrl: Boolean(photo.source_url),
+      });
+      let transformedBuffer: ArrayBuffer | null = null;
+      for (const input of inputs) {
+        try {
+          const stream = await openInput(input);
+          if (!stream) continue;
+          transformedBuffer = await transform(stream);
+          break;
+        } catch (error) {
+          console.error(JSON.stringify({
+            event: "transform_input_failed",
+            photoId: photo.id,
+            width,
+            input,
+            originalBytes: original.size,
+            error: error instanceof Error ? error.message : String(error),
+          }));
+        }
+      }
+      if (!transformedBuffer) {
+        console.error(JSON.stringify({
+          event: "transform_unavailable",
+          photoId: photo.id,
+          width,
+          inputs,
+          originalBytes: original.size,
+          reason: exceedsImagesInputLimit(original.size) && !transformSource
+            ? "original exceeds Images input limit and has no transform source"
+            : "every transform input failed",
+        }));
+        return null;
       }
 
       await env.PHOTOS_BUCKET.put(targetKey, transformedBuffer, {

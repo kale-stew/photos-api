@@ -34,6 +34,7 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 
 - Originals use `photos/{id}/original.{format}`.
 - Generated transforms use `photos/{id}/w{width}.webp`.
+- The Images binding rejects `.input()` over 20 MB. Originals above `IMAGES_INPUT_LIMIT_BYTES` resize from `photos/{id}/transform-source.webp` (4096px long edge), created locally with `sharp` by the importer or `npm run transform-sources:plan`. The Worker cannot create one, so admin uploads above the limit are rejected.
 - Keep `r2_key` unique across photos.
 - Preserve in-flight transform coalescing when changing image delivery.
 - Recheck active D1 state after transform writes; isolate-local in-flight tracking cannot coordinate deletion across Worker isolates.
