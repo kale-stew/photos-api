@@ -132,7 +132,7 @@ After upload works:
 - [x] Confirm no legacy photo cron writes; audit references and retire the embedded fallback
 - [ ] Delete duplicate `climb-log` D1/R2 photo storage after the soak (runbook in
   `climb-log/docs/specs/photos-api-consumer.md`, earliest 2026-10-23)
-- [ ] Add a JPEG/PNG transform for consumers that cannot decode WebP (blog OG images)
+- [x] Add `format=jpeg` transforms for consumers that cannot decode WebP (blog OG images)
 
 ## Acceptance Checks
 
