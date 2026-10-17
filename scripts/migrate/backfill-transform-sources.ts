@@ -191,11 +191,39 @@ export function planTransformSources(photos: PhotoRow[], objects: Map<string, R2
   };
 }
 
-function isActive(id: string): boolean {
-  return query<{ id: string }>(`SELECT id FROM photos WHERE id = ${sqlString(id)} AND status = 'active'`).length === 1;
+interface ActivePhoto extends PhotoRow {
+  sha256: string | null;
 }
 
-async function createAndVerify(entry: PlannedSource): Promise<"created" | "skipped" | "inactive"> {
+function activePhoto(id: string): ActivePhoto | null {
+  return query<ActivePhoto>(
+    `SELECT id, r2_key, format, sha256 FROM photos WHERE id = ${sqlString(id)} AND status = 'active'`,
+  )[0] ?? null;
+}
+
+/** Reject manifest entries whose keys do not match the canonical layout for the photo. */
+export function assertCanonicalKeys(entry: PlannedSource, photo: PhotoRow): void {
+  if (photo.r2_key !== entry.r2Key) throw new Error(`r2_key changed since planning for ${entry.id}`);
+  if (entry.originalKey !== originalKey(photo.r2_key, photo.format)) {
+    throw new Error(`Unexpected original key for ${entry.id}: ${entry.originalKey}`);
+  }
+  if (entry.targetKey !== transformSourceKey(photo.r2_key)) {
+    throw new Error(`Unexpected target key for ${entry.id}: ${entry.targetKey}`);
+  }
+}
+
+type Outcome = "created" | "skipped" | "inactive";
+
+async function createAndVerify(entry: PlannedSource): Promise<Outcome> {
+  const photo = activePhoto(entry.id);
+  if (!photo) {
+    if (listObjects(`${entry.r2Key}/`).has(entry.targetKey)) {
+      console.warn(`  ${entry.id} is inactive but holds ${entry.targetKey}; review before deletion`);
+    }
+    return "inactive";
+  }
+  assertCanonicalKeys(entry, photo);
+
   const current = listObjects(`${entry.r2Key}/`);
   if (current.has(entry.targetKey)) return "skipped";
 
@@ -203,10 +231,10 @@ async function createAndVerify(entry: PlannedSource): Promise<"created" | "skipp
   if (!original || original.size !== entry.originalBytes || original.etag !== entry.originalEtag) {
     throw new Error(`Original changed since planning for ${entry.id}`);
   }
-  if (!isActive(entry.id)) return "inactive";
 
   const bytes = getObject(entry.originalKey);
   if (!bytes || bytes.byteLength !== entry.originalBytes) throw new Error(`Original download failed for ${entry.id}`);
+  if (photo.sha256 && sha256(bytes) !== photo.sha256) throw new Error(`Original hash mismatch for ${entry.id}`);
 
   const source = await createTransformSource(bytes);
   const directory = await mkdtemp(join(tmpdir(), "photos-transform-source-"));
@@ -223,7 +251,7 @@ async function createAndVerify(entry: PlannedSource): Promise<"created" | "skipp
     throw new Error(`R2 verification failed for ${entry.targetKey}`);
   }
 
-  if (!isActive(entry.id)) {
+  if (!activePhoto(entry.id)) {
     cf(["r2", "objects", "delete", entry.targetKey, "--bucket-name", BUCKET]);
     return "inactive";
   }
@@ -240,12 +268,20 @@ async function apply(options: Options): Promise<void> {
     throw new Error("Manifest was planned with different limits; plan again");
   }
 
-  const results = { created: 0, skipped: 0, inactive: 0 };
+  const results: Record<Outcome, number> = { created: 0, skipped: 0, inactive: 0 };
+  const failed: { id: string; error: string }[] = [];
   for (const [index, entry] of manifest.photos.entries()) {
     console.log(`[${index + 1}/${manifest.photos.length}] ${entry.id}`);
-    results[await createAndVerify(entry)]++;
+    try {
+      results[await createAndVerify(entry)]++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  failed: ${message}`);
+      failed.push({ id: entry.id, error: message });
+    }
   }
-  console.log(JSON.stringify(results, null, 2));
+  console.log(JSON.stringify({ ...results, failed }, null, 2));
+  if (failed.length > 0) process.exitCode = 1;
 }
 
 async function main(): Promise<void> {

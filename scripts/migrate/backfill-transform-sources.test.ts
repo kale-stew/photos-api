@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
-import { planTransformSources } from "./backfill-transform-sources.js";
+import { assertCanonicalKeys, planTransformSources } from "./backfill-transform-sources.js";
 import { createTransformSource } from "./transform-source.js";
 
 const object = (key: string, size: number) => [key, { key, size, etag: `etag-${key}` }] as const;
@@ -41,6 +41,20 @@ test("plans nothing when every original is within the limit", () => {
     new Map([object("photos/small/original.jpeg", 20_000_000)]),
   );
   assert.equal(manifest.photos.length, 0);
+});
+
+test("accepts manifest keys that match the canonical layout", () => {
+  const photo = { id: "big", r2_key: "photos/big", format: "jpeg" };
+  const [entry] = planTransformSources([photo], new Map([object("photos/big/original.jpeg", 28_000_000)])).photos;
+  assert.doesNotThrow(() => assertCanonicalKeys(entry, photo));
+});
+
+test("rejects an edited manifest that targets another object", () => {
+  const photo = { id: "big", r2_key: "photos/big", format: "jpeg" };
+  const [entry] = planTransformSources([photo], new Map([object("photos/big/original.jpeg", 28_000_000)])).photos;
+  assert.throws(() => assertCanonicalKeys({ ...entry, targetKey: "photos/big/original.jpeg" }, photo), /Unexpected target key/);
+  assert.throws(() => assertCanonicalKeys({ ...entry, originalKey: "photos/other/original.jpeg" }, photo), /Unexpected original key/);
+  assert.throws(() => assertCanonicalKeys(entry, { ...photo, r2_key: "photos/moved" }), /r2_key changed/);
 });
 
 test("creates a WebP source capped at the long edge with orientation applied", async () => {

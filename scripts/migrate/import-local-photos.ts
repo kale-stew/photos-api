@@ -301,12 +301,11 @@ async function sourceBuffer(photo: ImportPhoto, options: PlanOptions): Promise<B
 /** Oversized originals need a smaller input before the Worker can resize them. */
 async function uploadTransformSource(photo: ImportPhoto, original: Buffer, tempDirectory: string): Promise<void> {
   const objectKey = transformSourceKey(photo.r2Key);
-  try {
-    cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" });
-    return;
-  } catch {
-    // Missing transform sources are created below.
-  }
+  const listed = JSON.parse(cf([
+    "r2", "objects", "list", "--bucket-name", "photos-bucket", "--prefix", objectKey, "--per-page", "1",
+  ], { encoding: "utf8" }) as string) as { key: string }[];
+  if (listed.some(({ key }) => key === objectKey)) return;
+
   const source = await createTransformSource(original);
   const sourcePath = join(tempDirectory, "transform-source.webp");
   await writeFile(sourcePath, source.buffer);

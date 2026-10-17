@@ -2050,7 +2050,9 @@ async function getOrCreateTransform(
           const sourceUrl = new URL(photo.source_url);
           if (!["http:", "https:"].includes(sourceUrl.protocol)) return null;
           const source = await fetch(sourceUrl, { headers: { Accept: "image/*" } });
-          return source.ok ? source.body : null;
+          if (source.ok) return source.body;
+          await source.body?.cancel();
+          return null;
         }
         return null;
       };
@@ -2062,12 +2064,14 @@ async function getOrCreateTransform(
       });
       let transformedBuffer: ArrayBuffer | null = null;
       for (const input of inputs) {
+        let stream: ReadableStream | null = null;
         try {
-          const stream = await openInput(input);
+          stream = await openInput(input);
           if (!stream) continue;
           transformedBuffer = await transform(stream);
           break;
         } catch (error) {
+          await stream?.cancel().catch(() => {});
           console.error(JSON.stringify({
             event: "transform_input_failed",
             photoId: photo.id,
