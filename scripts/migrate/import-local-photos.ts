@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
+import { exceedsImagesInputLimit, transformSourceKey } from "../../src/transform-source.js";
+import { createTransformSource } from "./transform-source.js";
 
 type ImageFormat = "jpeg" | "png" | "webp";
 
@@ -296,6 +298,23 @@ async function sourceBuffer(photo: ImportPhoto, options: PlanOptions): Promise<B
   return readFile(join(options.desktopDir, photo.sourceFiles[0]));
 }
 
+/** Oversized originals need a smaller input before the Worker can resize them. */
+async function uploadTransformSource(photo: ImportPhoto, original: Buffer, tempDirectory: string): Promise<void> {
+  const objectKey = transformSourceKey(photo.r2Key);
+  try {
+    cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" });
+    return;
+  } catch {
+    // Missing transform sources are created below.
+  }
+  const source = await createTransformSource(original);
+  const sourcePath = join(tempDirectory, "transform-source.webp");
+  await writeFile(sourcePath, source.buffer);
+  cf(["r2", "objects", "put", objectKey, "--bucket-name", "photos-bucket", `--file=${sourcePath}`, "--content-type=image/webp"]);
+  const verified = cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" }) as Buffer;
+  if (sha256(verified) !== sha256(source.buffer)) throw new Error(`Transform source verification failed for ${photo.id}`);
+}
+
 async function uploadAndVerify(photo: ImportPhoto, buffer: Buffer): Promise<void> {
   const tempDirectory = await mkdtemp(join(tmpdir(), "photos-import-"));
   const sourcePath = join(tempDirectory, `original.${photo.format}`);
@@ -310,11 +329,12 @@ async function uploadAndVerify(photo: ImportPhoto, buffer: Buffer): Promise<void
     }
     if (current) {
       if (sha256(current) !== photo.sha256) throw new Error(`R2 object differs for ${photo.id}`);
-      return;
+    } else {
+      cf(["r2", "objects", "put", objectKey, "--bucket-name", "photos-bucket", `--file=${sourcePath}`, `--content-type=image/${photo.format}`]);
+      const verified = cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" }) as Buffer;
+      if (sha256(verified) !== photo.sha256) throw new Error(`R2 verification failed for ${photo.id}`);
     }
-    cf(["r2", "objects", "put", objectKey, "--bucket-name", "photos-bucket", `--file=${sourcePath}`, `--content-type=image/${photo.format}`]);
-    const verified = cf(["r2", "objects", "get", objectKey, "--bucket-name", "photos-bucket"], { encoding: "buffer" }) as Buffer;
-    if (sha256(verified) !== photo.sha256) throw new Error(`R2 verification failed for ${photo.id}`);
+    if (exceedsImagesInputLimit(buffer.byteLength)) await uploadTransformSource(photo, buffer, tempDirectory);
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
