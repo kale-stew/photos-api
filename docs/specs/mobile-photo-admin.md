@@ -127,9 +127,12 @@ After upload works:
 - [ ] Add explicit per-file idempotency keys beyond SHA duplicate detection
 - [ ] Add upload rate limits and actor-aware audit records
 - [ ] Add search/filtering to the hike selector on the edit page
-- [ ] Switch `climb-log` gallery from compatibility listing to `portfolio`
-- [ ] Redirect and retire legacy `climb-log` photo admin routes
-- [ ] Stop legacy photo cron writes, then audit and retire duplicate D1/R2 storage
+- [x] Switch `climb-log` gallery to `portfolio` with paged search (`?q=`, `meta.total`)
+- [x] Redirect and retire legacy `climb-log` photo admin routes
+- [x] Confirm no legacy photo cron writes; audit references and retire the embedded fallback
+- [ ] Delete duplicate `climb-log` D1/R2 photo storage after the soak (runbook in
+  `climb-log/docs/specs/photos-api-consumer.md`, earliest 2026-10-23)
+- [ ] Add a JPEG/PNG transform for consumers that cannot decode WebP (blog OG images)
 
 ## Acceptance Checks
 
