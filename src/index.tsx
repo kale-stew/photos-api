@@ -772,6 +772,7 @@ app.get("/openapi.json", (c) => {
 app.get("/img/:photoId", async (c) => {
   const photoId = c.req.param("photoId");
   const requestedWidth = c.req.query("w");
+  const requestedFormat = c.req.query("format");
   const env = c.env;
   const ctx = c.executionCtx;
 
@@ -783,6 +784,10 @@ app.get("/img/:photoId", async (c) => {
 
   let r2Key: string;
   let width: number | null = null;
+  if (requestedFormat && !Object.hasOwn(TRANSFORM_FORMATS, requestedFormat)) {
+    return c.text(`Invalid format. Allowed: ${Object.keys(TRANSFORM_FORMATS).join(", ")}`, 400);
+  }
+  const output = TRANSFORM_FORMATS[(requestedFormat || "webp") as TransformFormat];
 
   if (requestedWidth && requestedWidth !== "original") {
     width = parseInt(requestedWidth, 10);
@@ -792,7 +797,7 @@ app.get("/img/:photoId", async (c) => {
         400
       );
     }
-    r2Key = `${photo.r2_key}/w${width}.webp`;
+    r2Key = `${photo.r2_key}/w${width}.${output.extension}`;
   } else {
     r2Key = `${photo.r2_key}/original.${photo.format}`;
   }
@@ -800,7 +805,7 @@ app.get("/img/:photoId", async (c) => {
   let object = await env.PHOTOS_BUCKET.get(r2Key);
 
   if (!object && width) {
-    object = await getOrCreateTransform(env, ctx, photo, width, r2Key);
+    object = await getOrCreateTransform(env, ctx, photo, width, r2Key, output.contentType);
   }
 
   if (!object) {
@@ -819,7 +824,7 @@ app.get("/img/:photoId", async (c) => {
   }
 
   const contentType = width
-    ? "image/webp"
+    ? output.contentType
     : object.httpMetadata?.contentType || `image/${photo.format}`;
 
   return new Response(object.body, {
@@ -2000,12 +2005,20 @@ app.post("/api/admin/upload", async (c) => {
 
 // ============ IMAGE TRANSFORM HELPERS ============
 
+const TRANSFORM_FORMATS = {
+  webp: { extension: "webp", contentType: "image/webp" },
+  jpeg: { extension: "jpg", contentType: "image/jpeg" },
+} as const;
+type TransformFormat = keyof typeof TRANSFORM_FORMATS;
+type TransformContentType = (typeof TRANSFORM_FORMATS)[TransformFormat]["contentType"];
+
 async function getOrCreateTransform(
   env: Env,
   ctx: ExecutionContext,
   photo: Photo,
   width: number,
-  targetKey: string
+  targetKey: string,
+  contentType: TransformContentType = "image/webp"
 ): Promise<R2ObjectBody | null> {
   const cacheKey = targetKey;
 
@@ -2023,7 +2036,7 @@ async function getOrCreateTransform(
       const transform = async (input: ReadableStream): Promise<ArrayBuffer> => {
         const transformed = await env.IMAGES.input(input)
           .transform({ width, fit: "scale-down" })
-          .output({ format: "image/webp", quality: 85 });
+          .output({ format: contentType, quality: 85 });
         return transformed.response().arrayBuffer();
       };
 
@@ -2033,7 +2046,7 @@ async function getOrCreateTransform(
       } catch (originalError) {
         // Some migrated originals are malformed or much larger than their
         // metadata indicates. Their retained source URL is the safest repair
-        // input; the generated WebP is still written to canonical R2.
+        // input; the generated transform is still written to canonical R2.
         if (!photo.source_url) throw originalError;
         const sourceUrl = new URL(photo.source_url);
         if (!["http:", "https:"].includes(sourceUrl.protocol)) throw originalError;
@@ -2044,7 +2057,7 @@ async function getOrCreateTransform(
       }
 
       await env.PHOTOS_BUCKET.put(targetKey, transformedBuffer, {
-        httpMetadata: { contentType: "image/webp" },
+        httpMetadata: { contentType },
       });
 
       if (!(await isPhotoActive(env.DB, photo.id))) {
@@ -2101,6 +2114,13 @@ function getOpenApiSpec(baseUrl: string): object {
               schema: { type: "integer", enum: [200, 400, 800, 1600] },
               description: "Resize width in pixels. Omit for original.",
             },
+            {
+              name: "format",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["webp", "jpeg"], default: "webp" },
+              description: "Output format for resized images. Use jpeg for consumers that cannot decode WebP.",
+            },
           ],
           responses: {
             "200": {
@@ -2110,7 +2130,7 @@ function getOpenApiSpec(baseUrl: string): object {
                 "image/webp": { schema: { type: "string", format: "binary" } },
               },
             },
-            "400": { description: "Invalid width parameter" },
+            "400": { description: "Invalid width or format parameter" },
             "404": { description: "Photo not found" },
           },
         },
