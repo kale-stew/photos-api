@@ -126,13 +126,14 @@ After upload works:
 - [ ] Test camera capture and five-photo selection on physical iOS and Android devices
 - [ ] Add explicit per-file idempotency keys beyond SHA duplicate detection
 - [ ] Add upload rate limits and actor-aware audit records
-- [ ] Add search/filtering to the hike selector on the edit page
+- [x] Searchable hike selector on the edit page (same-day hikes first; filtering never drops the current selection)
+- [x] Retire the `climb-log` climb mapper in favor of formal hike links
 - [x] Switch `climb-log` gallery to `portfolio` with paged search (`?q=`, `meta.total`)
 - [x] Redirect and retire legacy `climb-log` photo admin routes
 - [x] Confirm no legacy photo cron writes; audit references and retire the embedded fallback
 - [ ] Delete duplicate `climb-log` D1/R2 photo storage after the soak (runbook in
   `climb-log/docs/specs/photos-api-consumer.md`, earliest 2026-10-23)
-- [ ] Add a JPEG/PNG transform for consumers that cannot decode WebP (blog OG images)
+- [x] Add `format=jpeg` transforms for consumers that cannot decode WebP (blog OG images)
 
 ## Acceptance Checks
 

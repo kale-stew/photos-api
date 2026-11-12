@@ -621,6 +621,28 @@ function climbLabel(climb: ClimbOption): string {
   return [climb.date?.slice(0, 10), climb.title, climb.area, climb.state].filter(Boolean).join(" · ");
 }
 
+/** Same-day hikes first, then the remaining hikes in their existing order. */
+function orderClimbOptions(options: ClimbOption[], photoDate: string | null): ClimbOption[] {
+  const day = photoDate?.slice(0, 10);
+  if (!day) return options;
+  return [...options.filter((climb) => climb.date?.slice(0, 10) === day), ...options.filter((climb) => climb.date?.slice(0, 10) !== day)];
+}
+
+// Filters a hike <select> without ever dropping its current selection.
+const CLIMB_FILTER_SCRIPT = `
+  function attachClimbFilter(input, select) {
+    const all = Array.from(select.options).map(option => ({ value: option.value, text: option.textContent, label: (option.dataset.label || option.textContent || '').toLowerCase() }));
+    input.addEventListener('input', () => {
+      const query = input.value.toLowerCase().trim();
+      const selected = select.value;
+      select.innerHTML = '';
+      for (const option of all.filter(option => !query || !option.value || option.value === selected || option.label.includes(query))) {
+        select.add(new Option(option.text, option.value, false, option.value === selected));
+      }
+    });
+  }
+`;
+
 async function setPrimaryClimb(db: D1Database, photoId: string, climbId: string | null): Promise<void> {
   const statements = [
     db.prepare("DELETE FROM photo_climb_links WHERE photo_id = ?").bind(photoId),
@@ -780,6 +802,7 @@ app.get("/openapi.json", (c) => {
 app.get("/img/:photoId", async (c) => {
   const photoId = c.req.param("photoId");
   const requestedWidth = c.req.query("w");
+  const requestedFormat = c.req.query("format");
   const env = c.env;
   const ctx = c.executionCtx;
 
@@ -791,6 +814,10 @@ app.get("/img/:photoId", async (c) => {
 
   let r2Key: string;
   let width: number | null = null;
+  if (requestedFormat && !Object.hasOwn(TRANSFORM_FORMATS, requestedFormat)) {
+    return c.text(`Invalid format. Allowed: ${Object.keys(TRANSFORM_FORMATS).join(", ")}`, 400);
+  }
+  const output = TRANSFORM_FORMATS[(requestedFormat || "webp") as TransformFormat];
 
   if (requestedWidth && requestedWidth !== "original") {
     width = parseInt(requestedWidth, 10);
@@ -800,7 +827,7 @@ app.get("/img/:photoId", async (c) => {
         400
       );
     }
-    r2Key = `${photo.r2_key}/w${width}.webp`;
+    r2Key = `${photo.r2_key}/w${width}.${output.extension}`;
   } else {
     r2Key = `${photo.r2_key}/original.${photo.format}`;
   }
@@ -808,7 +835,7 @@ app.get("/img/:photoId", async (c) => {
   let object = await env.PHOTOS_BUCKET.get(r2Key);
 
   if (!object && width) {
-    object = await getOrCreateTransform(env, ctx, photo, width, r2Key);
+    object = await getOrCreateTransform(env, ctx, photo, width, r2Key, output.contentType);
   }
 
   if (!object) {
@@ -827,7 +854,7 @@ app.get("/img/:photoId", async (c) => {
   }
 
   const contentType = width
-    ? "image/webp"
+    ? output.contentType
     : object.httpMetadata?.contentType || `image/${photo.format}`;
 
   return new Response(object.body, {
@@ -1238,15 +1265,8 @@ app.get("/admin/upload", async (c) => {
         const submit = form.querySelector('button[type="submit"]');
         let uploading = false;
         const climbSelect = document.getElementById('climb-id');
-        const climbOptions = Array.from(climbSelect.options).map(option => ({ value: option.value, text: option.textContent, label: option.dataset.label || '' }));
-        document.getElementById('climb-search').addEventListener('input', (event) => {
-          const query = event.currentTarget.value.toLowerCase().trim();
-          const selected = climbSelect.value;
-          climbSelect.innerHTML = '';
-          for (const option of climbOptions.filter(option => !query || !option.value || option.label.includes(query))) {
-            climbSelect.add(new Option(option.text, option.value, false, option.value === selected));
-          }
-        });
+        ${CLIMB_FILTER_SCRIPT}
+        attachClimbFilter(document.getElementById('climb-search'), climbSelect);
         window.addEventListener('beforeunload', (event) => {
           if (uploading) { event.preventDefault(); event.returnValue = ''; }
         });
@@ -1364,12 +1384,18 @@ app.get("/admin/photos/:id", async (c) => {
                 </label>
               </div>
               <label>tags<input name="tags" value={tagsForInput(photo.tags)} placeholder="coast, fog, sunset" /></label>
-              <label>formal hike
-                <select id="climb-id" name="climbId">
-                  <option value="">No formal hike assignment</option>
-                  {climbOptions.map((climb) => <option value={climb.id} selected={primaryClimb?.climb_id === climb.id}>{climbLabel(climb)}</option>)}
-                </select>
-              </label>
+              <label for="climb-search">formal hike</label>
+              <input id="climb-search" type="search" autocomplete="off" placeholder="Filter hikes by title, date, or area" />
+              <select id="climb-id" name="climbId" data-initial={primaryClimb?.climb_id || ""} aria-label="formal hike">
+                <option value="">No formal hike assignment</option>
+                {primaryClimb && !climbOptions.some((climb) => climb.id === primaryClimb.climb_id) &&
+                  <option value={primaryClimb.climb_id} selected>Current hike {primaryClimb.climb_id} (hike list unavailable)</option>}
+                {orderClimbOptions(climbOptions, photo.date).map((climb) => {
+                  const sameDay = Boolean(photo.date && climb.date?.slice(0, 10) === photo.date.slice(0, 10));
+                  const label = `${sameDay ? "same day · " : ""}${climbLabel(climb)}`;
+                  return <option value={climb.id} selected={primaryClimb?.climb_id === climb.id} data-label={label.toLocaleLowerCase()}>{label}</option>;
+                })}
+              </select>
               <div class="edit-row">
                 <label>site<input name="site" value={photo.site || "both"} /></label>
                 <label>status
@@ -1384,6 +1410,9 @@ app.get("/admin/photos/:id", async (c) => {
               <div id="edit-status" class="edit-status" aria-live="polite"></div>
             </form>
             <script dangerouslySetInnerHTML={{ __html: `
+              ${CLIMB_FILTER_SCRIPT}
+              const climbSelect = document.getElementById('climb-id');
+              attachClimbFilter(document.getElementById('climb-search'), climbSelect);
               document.getElementById('metadata-form').addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const form = event.currentTarget;
@@ -1413,14 +1442,18 @@ app.get("/admin/photos/:id", async (c) => {
                   });
                   const result = await response.json();
                   if (!response.ok) throw new Error(result.error || 'save failed');
-                  const climbResponse = await fetch('/api/admin/photos/${photo.id}/climb', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ climbId: String(data.get('climbId') || '') || null }),
-                  });
-                  if (!climbResponse.ok) {
-                    const climbResult = await climbResponse.json();
-                    throw new Error(climbResult.error || 'hike assignment failed');
+                  const climbId = String(data.get('climbId') || '');
+                  if (climbId !== climbSelect.dataset.initial) {
+                    const climbResponse = await fetch('/api/admin/photos/${photo.id}/climb', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ climbId: climbId || null }),
+                    });
+                    if (!climbResponse.ok) {
+                      const climbResult = await climbResponse.json();
+                      throw new Error(climbResult.error || 'hike assignment failed');
+                    }
+                    climbSelect.dataset.initial = climbId;
                   }
                   status.textContent = 'Saved';
                   status.classList.add('saved');
@@ -2010,12 +2043,20 @@ app.post("/api/admin/upload", async (c) => {
 
 // ============ IMAGE TRANSFORM HELPERS ============
 
+const TRANSFORM_FORMATS = {
+  webp: { extension: "webp", contentType: "image/webp" },
+  jpeg: { extension: "jpg", contentType: "image/jpeg" },
+} as const;
+type TransformFormat = keyof typeof TRANSFORM_FORMATS;
+type TransformContentType = (typeof TRANSFORM_FORMATS)[TransformFormat]["contentType"];
+
 async function getOrCreateTransform(
   env: Env,
   ctx: ExecutionContext,
   photo: Photo,
   width: number,
-  targetKey: string
+  targetKey: string,
+  contentType: TransformContentType = "image/webp"
 ): Promise<R2ObjectBody | null> {
   const cacheKey = targetKey;
 
@@ -2036,7 +2077,7 @@ async function getOrCreateTransform(
       const transform = async (input: ReadableStream): Promise<ArrayBuffer> => {
         const transformed = await env.IMAGES.input(input)
           .transform({ width, fit: "scale-down" })
-          .output({ format: "image/webp", quality: 85 });
+          .output({ format: contentType, quality: 85 });
         return transformed.response().arrayBuffer();
       };
 
@@ -2097,7 +2138,7 @@ async function getOrCreateTransform(
       }
 
       await env.PHOTOS_BUCKET.put(targetKey, transformedBuffer, {
-        httpMetadata: { contentType: "image/webp" },
+        httpMetadata: { contentType },
       });
 
       if (!(await isPhotoActive(env.DB, photo.id))) {
@@ -2154,6 +2195,13 @@ function getOpenApiSpec(baseUrl: string): object {
               schema: { type: "integer", enum: [200, 400, 800, 1600] },
               description: "Resize width in pixels. Omit for original.",
             },
+            {
+              name: "format",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["webp", "jpeg"], default: "webp" },
+              description: "Output format for resized images. Use jpeg for consumers that cannot decode WebP.",
+            },
           ],
           responses: {
             "200": {
@@ -2163,7 +2211,7 @@ function getOpenApiSpec(baseUrl: string): object {
                 "image/webp": { schema: { type: "string", format: "binary" } },
               },
             },
-            "400": { description: "Invalid width parameter" },
+            "400": { description: "Invalid width or format parameter" },
             "404": { description: "Photo not found" },
           },
         },
