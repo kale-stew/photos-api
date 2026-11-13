@@ -23,6 +23,7 @@ import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
 import { matchExistingLocation, matchExistingLocationText } from "./location-matcher";
+import { collectionStatements, PUBLICATIONS, publicationForVisibility, type PublicationAction, type Visibility } from "./publication";
 import {
   exceedsImagesInputLimit,
   IMAGES_INPUT_LIMIT_BYTES,
@@ -1651,10 +1652,26 @@ app.patch("/api/admin/photos/bulk", async (c) => {
       if (body.field === "visibility" && !["public", "unlisted", "private"].includes(String(value))) return c.json({ error: "Invalid visibility" }, 400);
     }
     for (let offset = 0; offset < ids.length; offset += 25) {
-      const statements = ids.slice(offset, offset + 25).map((id) =>
-        c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, id),
-      );
-      await c.env.DB.batch(statements);
+      const chunk = ids.slice(offset, offset + 25);
+      let statements: D1PreparedStatement[];
+      if (body.field === "visibility") {
+        const placeholders = chunk.map(() => "?").join(", ");
+        const { results } = await c.env.DB.prepare(`SELECT id, site FROM photos WHERE id IN (${placeholders})`)
+          .bind(...chunk).all<{ id: string; site: string | null }>();
+        statements = results.flatMap(({ id, site }) => {
+          const publication = publicationForVisibility(value as Visibility, site);
+          return [
+            c.env.DB.prepare("UPDATE photos SET visibility = ?, exclude = ?, updated_at = datetime('now') WHERE id = ?")
+              .bind(publication.visibility, publication.exclude, id),
+            ...collectionStatements(c.env.DB, id, publication.collection),
+          ];
+        });
+      } else {
+        statements = chunk.map((id) =>
+          c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, id),
+        );
+      }
+      if (statements.length > 0) await c.env.DB.batch(statements);
     }
     return c.json({ updated: ids.length, field: body.field });
   }
@@ -1672,20 +1689,12 @@ app.patch("/api/admin/photos/bulk", async (c) => {
         continue;
       }
 
-      const publication = action === "portfolio"
-        ? { visibility: "public", exclude: 0, collection: "portfolio" }
-        : action === "editorial"
-          ? { visibility: "unlisted", exclude: 1, collection: "kylies-photos-content" }
-          : { visibility: "private", exclude: 1, collection: null };
+      const publication = PUBLICATIONS[action as PublicationAction];
       statements.push(
         c.env.DB.prepare("UPDATE photos SET visibility = ?, exclude = ?, status = 'active', updated_at = datetime('now') WHERE id = ?")
           .bind(publication.visibility, publication.exclude, id),
-        c.env.DB.prepare("DELETE FROM photo_collections WHERE photo_id = ?").bind(id),
+        ...collectionStatements(c.env.DB, id, publication.collection),
       );
-      if (publication.collection) {
-        statements.push(c.env.DB.prepare("INSERT INTO photo_collections (photo_id, collection_slug) VALUES (?, ?)")
-          .bind(id, publication.collection));
-      }
     }
     await c.env.DB.batch(statements);
   }
@@ -1697,6 +1706,25 @@ app.patch("/api/admin/photos/bulk", async (c) => {
 app.patch("/api/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
+
+  const current = await c.env.DB.prepare("SELECT visibility, site FROM photos WHERE id = ?")
+    .bind(id)
+    .first<{ visibility: string; site: string | null }>();
+  if (!current) return c.json({ error: "Photo not found" }, 404);
+
+  // A visibility change moves the photo between collections like the bulk actions do,
+  // so a photo can't end up public while listed only in a private collection.
+  let collectionChange: D1PreparedStatement[] = [];
+  if (
+    "visibility" in body &&
+    body.visibility !== current.visibility &&
+    ["public", "unlisted", "private"].includes(body.visibility)
+  ) {
+    const site = typeof body.site === "string" ? body.site : current.site;
+    const publication = publicationForVisibility(body.visibility as Visibility, site);
+    body.exclude = publication.exclude;
+    collectionChange = collectionStatements(c.env.DB, id, publication.collection);
+  }
 
   const allowedFields = [
     "title", "location", "date", "tags", "site", "exclude", "caption",
@@ -1733,7 +1761,7 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const sql = `UPDATE photos SET ${setClauses.join(", ")} WHERE id = ?`;
 
   try {
-    const update = await c.env.DB.prepare(sql).bind(...values).run();
+    const [update] = await c.env.DB.batch([c.env.DB.prepare(sql).bind(...values), ...collectionChange]);
     if (update.meta.changes !== 1) {
       return c.json({ error: "Photo not found" }, 404);
     }
