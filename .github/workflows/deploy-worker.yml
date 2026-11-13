@@ -1,0 +1,66 @@
+name: Worker release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photos-api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Validate and deploy Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CF_SEND_TELEMETRY: "false"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check Worker
+        run: npm run typecheck
+
+      - name: Run metadata and transform tests
+        run: npm run test:metadata && npm run test:transform-sources && npm run test:import-local
+
+      - name: Build Worker
+        run: npm run build -- --mode production
+
+      # Pull requests validate the exact production config and build without uploading a version.
+      - name: Dry-run production deployment
+        run: npx cf deploy --prebuilt --mode production --dry-run
+
+      - name: Check production credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in repository Actions secrets."
+            exit 1
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # This step runs only after code reaches main. It uses the build validated above.
+      - name: Deploy to Cloudflare
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx cf deploy --prebuilt --mode production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
