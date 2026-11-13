@@ -289,6 +289,17 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         .bulk-toolbar { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; padding: var(--space-sm); margin-bottom: var(--space-lg); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: var(--shadow-sm); }
         .bulk-toolbar select, .bulk-toolbar button { min-height: 38px; padding: 0.45rem 0.65rem; border: 1px solid #ddd; border-radius: var(--radius-sm); background: white; font: inherit; }
         .bulk-toolbar button { cursor: pointer; }
+        .database-view { overflow-x: auto; background: white; border: 1px solid #e5e5e5; border-radius: var(--radius-md); }
+        .database-view table { width: 100%; border-collapse: collapse; min-width: 1050px; font-size: 0.85rem; }
+        .database-view th, .database-view td { padding: 0.65rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .database-view th { position: sticky; top: 0; background: #f7f7f7; white-space: nowrap; }
+        .database-view th a { color: inherit; text-decoration: none; }
+        .database-view th a:hover { color: var(--color-accent); }
+        .database-view img { width: 56px; height: 44px; object-fit: cover; border-radius: 4px; display: block; }
+        .view-toggle { display: inline-flex; gap: 0.75rem; margin-bottom: var(--space-md); }
+        .view-toggle a { color: var(--color-accent); }
+        .database-bulk-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        .database-bulk-editor input, .database-bulk-editor select { min-height: 36px; padding: 0.4rem; border: 1px solid #ddd; border-radius: var(--radius-sm); font: inherit; }
         .tag {
           display: inline-block;
           background: var(--color-accent-light);
@@ -1032,6 +1043,10 @@ app.get("/admin/", async (c) => {
   const visibility = url.searchParams.get("visibility") || "";
   const status = url.searchParams.get("status") || "";
   const source = url.searchParams.get("source") || "";
+  const view = url.searchParams.get("view") === "table" ? "table" : "grid";
+  const sortFields: Record<string, string> = { title: "title", caption: "caption", location: "location", date: "date", tags: "tags", site: "site", source: "source", visibility: "visibility", status: "status", created: "created_at" };
+  const sort = sortFields[url.searchParams.get("sort") || ""] ? url.searchParams.get("sort")! : "date";
+  const direction = url.searchParams.get("dir") === "asc" ? "asc" : "desc";
   const where: string[] = [];
   const params: string[] = [];
   if (q) {
@@ -1045,7 +1060,7 @@ app.get("/admin/", async (c) => {
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const result = await c.env.DB.prepare(
-    `SELECT * FROM photos ${whereSql} ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?`
+    `SELECT * FROM photos ${whereSql} ORDER BY ${sortFields[sort]} ${direction.toUpperCase()}, id ASC LIMIT ? OFFSET ?`
   )
     .bind(...params, perPage, offset)
     .all<Photo>();
@@ -1061,121 +1076,129 @@ app.get("/admin/", async (c) => {
   const origin = url.origin;
   const pageUrl = (targetPage: number) => {
     const params = new URLSearchParams(url.searchParams);
+    params.delete("partial");
     params.set("page", String(targetPage));
     return `/admin/?${params}`;
   };
 
-  return c.html(
-    <AdminLayout title="photo grid">
-      <div class="page-title">
-        <h1>photo grid</h1>
-        <p>{total} photos · page {page} of {totalPages}</p>
-      </div>
-
-      <form class="admin-filters" method="get" action="/admin/">
-        <input type="search" name="q" value={q} placeholder="search title, caption, location, tags, or ID" />
-        <select name="visibility">
-          <option value="">all visibility</option>
-          {['public', 'unlisted', 'private'].map(value => <option value={value} selected={visibility === value}>{value}</option>)}
-        </select>
-        <select name="status">
-          <option value="">all status</option>
-          {['active', 'quarantined'].map(value => <option value={value} selected={status === value}>{value}</option>)}
-        </select>
-        <select name="source">
-          <option value="">all sources</option>
-          {['upload', 'desktop', 'blog', 'flickr', 'cloudflare-images'].map(value => <option value={value} selected={source === value}>{value}</option>)}
-        </select>
-        <button type="submit">filter</button>
-      </form>
-
-      <div class="bulk-toolbar">
-        <label><input id="select-page" type="checkbox" /> select this page</label>
-        <strong id="selected-count">0 selected</strong>
-        <select id="bulk-action">
-          <option value="">choose bulk action</option>
-          <option value="portfolio">move to Portfolio</option>
-          <option value="editorial">move to Editorial</option>
-          <option value="private">make Private</option>
-          <option value="activate">activate</option>
-          <option value="quarantine">quarantine</option>
-        </select>
-        <button id="apply-bulk" type="button">apply</button>
-      </div>
-
-      {photos.length === 0 ? (
-        <div class="empty-state">
-          <h2>no photos found</h2>
-          <p>upload some photos to get started</p>
+  const resultView = (
+    <div id="database-results">
+      <div class="page-title"><p id="photo-count">{total} photos · page {page} of {totalPages}</p></div>
+      {view === "table" ? (
+        <div class="database-view">
+          <table>
+            <thead><tr>
+              <th>select</th><th>photo</th><th>id</th>
+              {([ ["title", "title"], ["caption", "caption"], ["location", "location"], ["date", "date"], ["tags", "tags"], ["site", "site"], ["source", "source"], ["visibility", "visibility"], ["status", "status"] ] as const).map(([key, label]) => {
+                const params = new URLSearchParams(url.searchParams);
+                params.set("sort", key);
+                params.set("dir", sort === key && direction === "asc" ? "desc" : "asc");
+                params.set("page", "1");
+                params.delete("partial");
+                return <th><a href={`/admin/?${params}`}>{label}{sort === key ? (direction === "asc" ? " ↑" : " ↓") : ""}</a></th>;
+              })}
+            </tr></thead>
+            <tbody>
+              {photos.map((photo) => <tr data-photo-row={photo.id}>
+                <td><input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} /></td>
+                <td><a href={`/admin/photos/${photo.id}`}><img src={`${origin}/img/${photo.id}?w=200`} alt={photo.title || "photo"} loading="lazy" /></a></td>
+                <td><a href={`/admin/photos/${photo.id}`}>{photo.id}</a></td>
+                <td>{photo.title || "—"}</td><td>{photo.caption || "—"}</td><td>{photo.location || "—"}</td><td>{photo.date || "—"}</td><td>{photo.tags || "—"}</td><td>{photo.site || "—"}</td><td>{photo.source || "—"}</td><td>{photo.width && photo.height ? `${photo.width}×${photo.height}` : "—"}</td><td>{photo.exclude ? "yes" : "no"}</td><td>{photo.visibility}</td><td>{photo.status}</td>
+              </tr>)}
+            </tbody>
+          </table>
         </div>
       ) : (
-        <>
-          <div class="photo-grid">
-            {photos.map((photo) => (
-              <article class="photo-card" key={photo.id} data-photo-id={photo.id}>
-                <input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} />
-                <a href={`/admin/photos/${photo.id}`}>
-                  <img
-                    src={`${origin}/img/${photo.id}?w=200`}
-                    alt={photo.title || "photo"}
-                    loading="lazy"
-                  />
-                </a>
-                <div class="photo-card-info">
-                  <a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a>
-                  <div class="photo-card-meta">
-                    {photo.date ? photo.date : "no date"}
-                    {photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}
-                  </div>
-                  {photo.site && (
-                    <div class="photo-card-tags">
-                      <span class="tag">{photo.site}</span>
-                      <span class="tag">{photo.visibility}</span>
-                      <span class="tag">{photo.status}</span>
-                    </div>
-                  )}
-                </div>
-                <div class="photo-card-actions">
-                  <a href={`/admin/photos/${photo.id}`}>edit</a>
-                  <button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button>
-                </div>
-              </article>
-            ))}
-          </div>
+        photos.length === 0 ? <div class="empty-state"><h2>no photos found</h2><p>upload some photos to get started</p></div> : <div class="photo-grid">
+          {photos.map((photo) => <article class="photo-card" key={photo.id} data-photo-id={photo.id}>
+            <input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} />
+            <a href={`/admin/photos/${photo.id}`}><img src={`${origin}/img/${photo.id}?w=200`} alt={photo.title || "photo"} loading="lazy" /></a>
+            <div class="photo-card-info"><a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a><div class="photo-card-meta">{photo.date || "no date"}{photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}</div><div class="photo-card-tags"><span class="tag">{photo.site}</span><span class="tag">{photo.visibility}</span><span class="tag">{photo.status}</span></div></div>
+            <div class="photo-card-actions"><a href={`/admin/photos/${photo.id}`}>edit</a><button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button></div>
+          </article>)}
+        </div>
+      )}
+      {totalPages > 1 && <div class="pagination">{page > 1 && <a href={pageUrl(page - 1)}>← previous</a>}<span>page {page} of {totalPages}</span>{page < totalPages && <a href={pageUrl(page + 1)}>next →</a>}</div>}
+    </div>
+  );
+  if (url.searchParams.get("partial") === "1") return c.html(resultView);
 
-          {totalPages > 1 && (
-            <div class="pagination">
-              {page > 1 && <a href={pageUrl(page - 1)}>← previous</a>}
-              <span>page {page} of {totalPages}</span>
-              {page < totalPages && <a href={pageUrl(page + 1)}>next →</a>}
-            </div>
-          )}
-          <script dangerouslySetInnerHTML={{ __html: `
-            const selections = Array.from(document.querySelectorAll('.photo-select'));
-            const updateSelectedCount = () => {
-              document.getElementById('selected-count').textContent = selections.filter(input => input.checked).length + ' selected';
-            };
-            selections.forEach(input => input.addEventListener('change', updateSelectedCount));
-            document.getElementById('select-page').addEventListener('change', (event) => {
-              selections.forEach(input => { input.checked = event.currentTarget.checked; });
-              updateSelectedCount();
+  return c.html(
+    <AdminLayout title="photo database">
+      <div class="page-title"><h1>photo database</h1><p>Browse every photo, search as you type, and edit selected properties in bulk.</p></div>
+      <div class="view-toggle"><a href="/admin/">grid view</a><a href={`/admin/?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), view: "table" })}`}>database view</a></div>
+      <form id="admin-filters" class="admin-filters" method="get" action="/admin/">
+        <input type="hidden" name="view" value={view} />
+        <input id="admin-search" type="search" name="q" value={q} placeholder="search title, caption, location, tags, or ID" autocomplete="off" />
+        <select name="visibility"><option value="">all visibility</option>{['public', 'unlisted', 'private'].map(value => <option value={value} selected={visibility === value}>{value}</option>)}</select>
+        <select name="status"><option value="">all status</option>{['active', 'quarantined'].map(value => <option value={value} selected={status === value}>{value}</option>)}</select>
+        <select name="source"><option value="">all sources</option>{['upload', 'desktop', 'blog', 'flickr', 'cloudflare-images'].map(value => <option value={value} selected={source === value}>{value}</option>)}</select>
+        <button type="submit">filter</button>
+      </form>
+      <div class="bulk-toolbar">
+        <label><input id="select-page" type="checkbox" /> select this page</label><strong id="selected-count">0 selected</strong>
+        <select id="bulk-action"><option value="">choose bulk action</option><option value="portfolio">move to Portfolio</option><option value="editorial">move to Editorial</option><option value="private">make Private</option><option value="activate">activate</option><option value="quarantine">quarantine</option></select>
+        <button id="apply-bulk" type="button">apply action</button>
+        <span class="database-bulk-editor"><select id="bulk-field"><option value="">edit property…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option><option value="status">status</option><option value="exclude">exclude from listings</option></select><input id="bulk-value" placeholder="new value" /><button id="apply-property" type="button">set property</button></span>
+      </div>
+      {resultView}
+      <script dangerouslySetInnerHTML={{ __html: `
+            let searchTimer;
+            let latestSearch = 0;
+            const selections = () => Array.from(document.querySelectorAll('.photo-select'));
+            const updateSelectedCount = () => { document.getElementById('selected-count').textContent = selections().filter(input => input.checked).length + ' selected'; };
+            document.addEventListener('change', (event) => {
+              if (event.target.matches('.photo-select')) updateSelectedCount();
+              if (event.target.id === 'select-page') { selections().forEach(input => { input.checked = event.target.checked; }); updateSelectedCount(); }
             });
+            const refreshSearch = async () => {
+              const form = document.getElementById('admin-filters');
+              const params = new URLSearchParams(location.search);
+              for (const [key, value] of new FormData(form)) params.set(key, value);
+              params.set('page', '1'); params.set('partial', '1');
+              const requestId = ++latestSearch;
+              const response = await fetch('/admin/?' + params, { headers: { 'X-Requested-With': 'fetch' } });
+              if (!response.ok || requestId !== latestSearch) return;
+              const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+              const fresh = doc.getElementById('database-results');
+              if (fresh) { document.getElementById('database-results')?.replaceWith(fresh); }
+              params.delete('partial'); history.replaceState({}, '', '/admin/?' + params);
+              document.getElementById('select-page').checked = false; updateSelectedCount();
+            };
+            document.getElementById('admin-search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(refreshSearch, 250); });
             document.getElementById('apply-bulk').addEventListener('click', async () => {
-              const ids = selections.filter(input => input.checked).map(input => input.value);
+              const ids = selections().filter(input => input.checked).map(input => input.value);
               const action = document.getElementById('bulk-action').value;
               if (!ids.length || !action) return alert('Select photos and an action first.');
               if (!confirm('Apply ' + action + ' to ' + ids.length + ' photos?')) return;
-              const response = await fetch('/api/admin/photos/bulk', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids, action }),
-              });
-              const result = await response.json();
-              if (!response.ok) return alert(result.error || 'bulk update failed');
-              location.reload();
+              const response = await fetch('/api/admin/photos/bulk', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, action }) });
+              const result = await response.json(); if (!response.ok) return alert(result.error || 'bulk update failed'); location.reload();
             });
-            document.querySelectorAll('.delete-photo').forEach((button) => {
-              button.addEventListener('click', async () => {
+            document.getElementById('bulk-field').addEventListener('change', (event) => {
+              const field = event.target.value;
+              const options = field === 'visibility' ? [['public','public'],['unlisted','unlisted'],['private','private']] :
+                field === 'status' ? [['active','active'],['quarantined','quarantined']] :
+                field === 'exclude' ? [['0','no'],['1','yes']] : null;
+              const current = document.getElementById('bulk-value');
+              if (options && current.tagName !== 'SELECT') {
+                const select = document.createElement('select'); select.id = 'bulk-value';
+                options.forEach(([value,label]) => { const option = document.createElement('option'); option.value = value; option.textContent = label; select.appendChild(option); });
+                current.replaceWith(select);
+              } else if (!options && current.tagName !== 'INPUT') {
+                const input = document.createElement('input'); input.id = 'bulk-value'; input.placeholder = 'new value'; current.replaceWith(input);
+              }
+            });
+            document.getElementById('apply-property').addEventListener('click', async () => {
+              const ids = selections().filter(input => input.checked).map(input => input.value);
+              const field = document.getElementById('bulk-field').value;
+              const value = document.getElementById('bulk-value').value;
+              if (!ids.length || !field) return alert('Select photos and a property first.');
+              if (!confirm('Set ' + field + ' on ' + ids.length + ' photos?')) return;
+              const response = await fetch('/api/admin/photos/bulk', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, field, value }) });
+              const result = await response.json(); if (!response.ok) return alert(result.error || 'bulk update failed'); location.reload();
+            });
+            document.addEventListener('click', async (event) => {
+              const button = event.target.closest('.delete-photo'); if (!button) return;
                 const id = button.dataset.photoId;
                 if (!id || !confirm('Permanently delete this uploaded photo? This cannot be undone.')) return;
                 button.disabled = true;
@@ -1198,11 +1221,8 @@ app.get("/admin/", async (c) => {
                   button.textContent = 'delete';
                   alert(error instanceof Error ? error.message : 'delete failed');
                 }
-              });
             });
           `}} />
-        </>
-      )}
     </AdminLayout>
   );
 });
@@ -1611,12 +1631,34 @@ app.get("/admin/photos/:id", async (c) => {
 // ============ ADMIN API ROUTES ============
 
 app.patch("/api/admin/photos/bulk", async (c) => {
-  const body = await c.req.json().catch(() => ({})) as { ids?: unknown; action?: unknown };
+  const body = await c.req.json().catch(() => ({})) as { ids?: unknown; action?: unknown; field?: unknown; value?: unknown };
   const ids = Array.isArray(body.ids)
     ? [...new Set(body.ids.filter((id): id is string => typeof id === "string" && id.length > 0))]
     : [];
-  const action = typeof body.action === "string" ? body.action : "";
   if (ids.length === 0 || ids.length > 100) return c.json({ error: "Select between 1 and 100 photos" }, 400);
+  if (typeof body.field === "string") {
+    const fields = new Set(["title", "caption", "location", "date", "tags", "site", "status", "visibility", "exclude"]);
+    if (!fields.has(body.field)) return c.json({ error: "Invalid property" }, 400);
+    let value: string | number | null;
+    if (body.field === "exclude") {
+      if (![0, 1, "0", "1", false, true].includes(body.value as never)) return c.json({ error: "Exclude must be 0 or 1" }, 400);
+      value = body.value === 1 || body.value === "1" || body.value === true ? 1 : 0;
+    } else {
+      if (body.value !== null && typeof body.value !== "string") return c.json({ error: "Property value must be text" }, 400);
+      value = body.value;
+      if (typeof value === "string" && value.length > 2000) return c.json({ error: "Property value is too long" }, 400);
+      if (body.field === "status" && !["active", "quarantined"].includes(String(value))) return c.json({ error: "Invalid status" }, 400);
+      if (body.field === "visibility" && !["public", "unlisted", "private"].includes(String(value))) return c.json({ error: "Invalid visibility" }, 400);
+    }
+    for (let offset = 0; offset < ids.length; offset += 25) {
+      const statements = ids.slice(offset, offset + 25).map((id) =>
+        c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, id),
+      );
+      await c.env.DB.batch(statements);
+    }
+    return c.json({ updated: ids.length, field: body.field });
+  }
+  const action = typeof body.action === "string" ? body.action : "";
   if (!["portfolio", "editorial", "private", "activate", "quarantine"].includes(action)) {
     return c.json({ error: "Invalid bulk action" }, 400);
   }
