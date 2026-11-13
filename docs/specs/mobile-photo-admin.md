@@ -14,7 +14,8 @@ offline background uploader.
 
 - Cloudflare Access protects `/admin*` and `/api/admin/*`.
 - `/admin` supports search, filters, pagination, selection, and safe bulk
-  publication/lifecycle updates.
+  publication/lifecycle updates, plus a sortable database table, debounced live
+  search, and bulk updates to supported metadata properties.
 - `/admin/upload` uploads JPEG, PNG, WebP, HEIC, and HEIF sequentially with SHA
   duplicate reuse, destination controls, and optional formal hike assignment.
 - `/admin/photos/:id` edits metadata, lifecycle, visibility, hike assignment,
@@ -118,6 +119,7 @@ After upload works:
 - [x] Mobile upload page, SHA dedupe, destination mapping, and transform verification
 - [x] Editable metadata and visible save confirmation
 - [x] Search, filters, pagination, selection, and bulk publication updates
+- [x] Database table view, clickable property sorting, live search, and bulk property edits
 - [x] HEIC profiling and production HEIC-to-WebP transform test
 - [x] Protected EXIF, map review, and conservative known-location suggestions
 - [x] AI caption suggestions with manual review
