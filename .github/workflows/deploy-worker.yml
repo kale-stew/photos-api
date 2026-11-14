@@ -37,7 +37,7 @@ jobs:
         run: npm run typecheck
 
       - name: Run metadata and transform tests
-        run: npm run test:metadata && npm run test:transform-sources && npm run test:import-local
+        run: npm run test:metadata && npm run test:transform-sources && npm run test:import-local && npm run test:clean-tags
 
       - name: Build Worker
         run: npm run build -- --mode production
