@@ -34,6 +34,8 @@ import {
   transformSourceKey,
 } from "./transform-source";
 import { imageVersion, staleObjectKeys, versionedImagePath } from "./replace-image";
+import { isSiteCode, parseSite, SITES, siteLabel, sitesForValue } from "./sites";
+import { MAX_TAG_SUGGESTIONS, parseTags, parseTagSuggestions } from "./tag-suggestions";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -105,6 +107,18 @@ async function locationFromExistingPhotos(
 }
 
 // ============ ADMIN LAYOUT & COMPONENTS ============
+
+const SiteOptions: FC<{ selected: string[] }> = ({ selected }) => (
+  <fieldset class="site-options">
+    <legend>visible on</legend>
+    {SITES.map((site) => (
+      <label class="site-option">
+        <input type="checkbox" name="site" value={site.code} checked={selected.includes(site.code)} />
+        {site.label}
+      </label>
+    ))}
+  </fieldset>
+);
 
 const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) => (
   <html lang="en">
@@ -284,25 +298,53 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           text-decoration: none;
         }
         .photo-card-actions button { color: #b91c1c; border-color: #fecaca; }
-        .photo-select { position: absolute; top: 0.55rem; left: 0.55rem; z-index: 2; width: 1.25rem; height: 1.25rem; accent-color: var(--color-accent); }
+        .photo-select { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
         .photo-card { position: relative; }
-        .admin-filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(130px, 1fr)) auto; gap: var(--space-sm); margin-bottom: var(--space-lg); }
-        .admin-filters input, .admin-filters select { min-height: 42px; padding: 0.6rem; border: 1px solid #ddd; border-radius: var(--radius-md); background: white; font: inherit; }
-        .admin-filters button { border: 0; border-radius: var(--radius-md); padding: 0.6rem 1rem; background: var(--color-accent); color: white; font-weight: 700; cursor: pointer; }
-        .bulk-toolbar { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; padding: var(--space-sm); margin-bottom: var(--space-lg); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: var(--shadow-sm); }
-        .bulk-toolbar select, .bulk-toolbar button { min-height: 38px; padding: 0.45rem 0.65rem; border: 1px solid #ddd; border-radius: var(--radius-sm); background: white; font: inherit; }
-        .bulk-toolbar button { cursor: pointer; }
+        .photo-card .photo-select { position: absolute; top: 0.55rem; left: 0.55rem; z-index: 2; width: 1.25rem; height: 1.25rem; }
+        .visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+        .list-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-lg); }
+        .list-header h1 { margin: 0; font-size: 1.6rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
+        .view-switch { display: inline-flex; padding: 3px; border-radius: var(--radius-md); background: #ececec; }
+        .view-switch a { padding: 0.35rem 0.85rem; border-radius: calc(var(--radius-md) - 2px); color: var(--color-text-muted); font-size: 0.85rem; font-weight: 600; text-decoration: none; }
+        .view-switch a[aria-current="page"] { background: white; color: var(--color-text); box-shadow: var(--shadow-sm); }
+
+        .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-sm); }
+        .filter-bar input, .filter-bar select { min-height: 40px; padding: 0.5rem 0.65rem; border: 1px solid #ddd; border-radius: var(--radius-md); background: white; color: var(--color-text); font: inherit; font-size: 0.9rem; }
+        .search-field { position: relative; flex: 1 1 280px; min-width: 0; }
+        .search-field input { width: 100%; }
+        .filter-group { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+        .clear-filters { color: var(--color-accent); font-size: 0.85rem; font-weight: 600; padding: 0 var(--space-xs); }
+        .recent-searches { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; padding: 4px; border: 1px solid #e5e5e5; border-radius: var(--radius-md); background: white; box-shadow: var(--shadow-lg); }
+        .recent-option { padding: 0.45rem 0.6rem; border-radius: var(--radius-sm); font-size: 0.9rem; cursor: pointer; }
+        .recent-option::before { content: '↺'; margin-right: 0.5rem; color: var(--color-text-muted); }
+        .recent-option[aria-selected="true"] { background: var(--color-accent-light); }
+        @media (hover: hover) and (pointer: fine) { .recent-option:hover { background: #f4f4f4; } }
+        .recent-clear { display: block; width: 100%; margin-top: 2px; padding: 0.4rem 0.6rem; border: 0; border-top: 1px solid #eee; background: none; color: var(--color-text-muted); font: inherit; font-size: 0.75rem; text-align: left; cursor: pointer; }
+
+        .selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); padding: var(--space-sm) var(--space-md); margin-bottom: var(--space-md); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: var(--shadow-sm); font-size: 0.85rem; }
+        .select-page { display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; }
+        .selected-count { min-width: 6.5rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+        .action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0; padding: 0.3rem 0.3rem 0.3rem 0.65rem; border: 0; border-radius: var(--radius-md); background: #f5f5f5; min-width: 0; }
+        .action-group legend { float: left; padding: 0; margin-right: 0.15rem; color: var(--color-text-muted); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+        .action-group select, .action-group input, .action-group button { min-height: 34px; padding: 0.35rem 0.55rem; border: 1px solid #ddd; border-radius: var(--radius-sm); background: white; color: var(--color-text); font: inherit; }
+        .action-group input { width: 11rem; }
+        .action-group button { font-weight: 600; cursor: pointer; }
+        .action-group:disabled { opacity: 0.45; }
+        .action-group:disabled button { cursor: not-allowed; }
+        .results-meta { margin: 0 0 var(--space-sm); color: var(--color-text-muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
         .database-view { overflow-x: auto; background: white; border: 1px solid #e5e5e5; border-radius: var(--radius-md); }
-        .database-view table { width: 100%; border-collapse: collapse; min-width: 1050px; font-size: 0.85rem; }
+        .database-view table { width: 100%; border-collapse: collapse; min-width: 1200px; font-size: 0.85rem; }
         .database-view th, .database-view td { padding: 0.65rem; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
         .database-view th { position: sticky; top: 0; background: #f7f7f7; white-space: nowrap; }
         .database-view th a { color: inherit; text-decoration: none; }
         .database-view th a:hover { color: var(--color-accent); }
+        .database-view td:first-child, .database-view th:first-child { width: 2.25rem; padding-right: 0; }
+        .database-view .nowrap { white-space: nowrap; }
+        .database-view code { font-size: 0.75rem; }
+        .database-view td a { color: var(--color-accent); }
         .database-view img { width: 56px; height: 44px; object-fit: cover; border-radius: 4px; display: block; }
-        .view-toggle { display: inline-flex; gap: 0.75rem; margin-bottom: var(--space-md); }
-        .view-toggle a { color: var(--color-accent); }
-        .database-bulk-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-        .database-bulk-editor input, .database-bulk-editor select { min-height: 36px; padding: 0.4rem; border: 1px solid #ddd; border-radius: var(--radius-sm); font: inherit; }
         .tag {
           display: inline-block;
           background: var(--color-accent-light);
@@ -341,6 +383,10 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         .pagination span {
           color: var(--color-text-muted);
         }
+        .pagination .pagination-edge { opacity: 0.4; box-shadow: none; }
+        .page-jump { display: inline-flex; align-items: center; gap: var(--space-sm); font-size: 0.9rem; color: var(--color-text-muted); }
+        .page-jump input { width: 4.5rem; min-height: 36px; padding: 0.3rem 0.5rem; border: 1px solid #ddd; border-radius: var(--radius-sm); font: inherit; text-align: center; font-variant-numeric: tabular-nums; }
+        .page-jump button { min-height: 36px; padding: 0.3rem 0.75rem; border: 1px solid var(--color-accent-light); border-radius: var(--radius-sm); background: white; color: var(--color-accent); font: inherit; font-weight: 600; cursor: pointer; }
         
         /* Detail view */
         .detail-layout {
@@ -543,6 +589,17 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         }
         .edit-form textarea { min-height: 84px; resize: vertical; }
         .edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+        .tag-suggestions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: calc(var(--space-sm) * -1); }
+        .tag-chip, .tag-add-all { min-height: 30px; padding: 0.2rem 0.6rem; border: 1px solid var(--color-accent-light); border-radius: 999px; background: var(--color-accent-light); color: var(--color-accent); font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+        .tag-chip.new { background: white; border-style: dashed; }
+        .tag-chip:active, .tag-add-all:active { transform: scale(0.97); }
+        .tag-add-all { background: none; border-color: transparent; color: var(--color-text-muted); }
+        .site-options { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin: 0; padding: 0; border: 0; min-width: 0; }
+        .site-options legend { float: left; width: 100%; margin-bottom: var(--space-xs); padding: 0; font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); }
+        .site-option { display: inline-flex !important; align-items: center; gap: 0.45rem !important; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: var(--radius-md); background: white; color: var(--color-text) !important; font-size: 0.85rem !important; font-weight: 500 !important; cursor: pointer; }
+        .site-option input { width: auto !important; margin: 0; accent-color: var(--color-accent); }
+        .site-option:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-light); }
+        .site-option:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
         .edit-checkbox { display: flex !important; grid-template-columns: auto 1fr; align-items: center; }
         .edit-checkbox input { width: auto; }
         .edit-submit { border: 0; border-radius: var(--radius-md); padding: 0.75rem; background: var(--gradient); color: white; font-weight: 700; cursor: pointer; }
@@ -572,7 +629,11 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           .upload-panel { padding: var(--space-lg); }
           .admin-header { padding: 0.75rem var(--space-md); }
           .admin-header nav { gap: var(--space-md); }
-          .admin-filters { grid-template-columns: 1fr; }
+          .filter-group, .filter-group select { flex: 1 1 calc(50% - var(--space-sm)); }
+          .action-group { flex: 1 1 100%; }
+          .action-group:disabled { display: none; }
+          .filter-bar input, .filter-bar select, .page-jump input { font-size: 16px; }
+          .pagination { gap: var(--space-sm); }
           .edit-row, .exif-grid { grid-template-columns: 1fr; }
         }
       `}} />
@@ -582,7 +643,7 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         <div class="admin-header-inner">
           <a href="/admin">photos-api admin</a>
           <nav>
-            <a href="/admin">grid</a>
+            <a href="/admin">photos</a>
             <a href="/admin/upload">upload</a>
             <a href="/docs">api docs</a>
           </nav>
@@ -1042,13 +1103,14 @@ app.get("/", (c) => c.redirect("/docs", 302));
 app.get("/admin/", async (c) => {
   const url = new URL(c.req.url);
   const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
-  const page = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+  const requestedPage = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
   const perPage = 50;
-  const offset = (page - 1) * perPage;
   const q = url.searchParams.get("q")?.trim() || "";
   const visibility = url.searchParams.get("visibility") || "";
   const status = url.searchParams.get("status") || "";
   const source = url.searchParams.get("source") || "";
+  const siteParam = url.searchParams.get("site") || "";
+  const site = isSiteCode(siteParam) ? siteParam : "";
   const view = url.searchParams.get("view") === "table" ? "table" : "grid";
   const sortFields: Record<string, string> = { title: "title", caption: "caption", location: "location", date: "date", tags: "tags", site: "site", source: "source", visibility: "visibility", status: "status", created: "created_at" };
   const sort = sortFields[url.searchParams.get("sort") || ""] ? url.searchParams.get("sort")! : "date";
@@ -1063,13 +1125,8 @@ app.get("/admin/", async (c) => {
   if (visibility) { where.push("visibility = ?"); params.push(visibility); }
   if (status) { where.push("status = ?"); params.push(status); }
   if (source) { where.push("source = ?"); params.push(source); }
+  if (site) { where.push("(site = ? OR site = 'both')"); params.push(site); }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-
-  const result = await c.env.DB.prepare(
-    `SELECT * FROM photos ${whereSql} ORDER BY ${sortFields[sort]} ${direction.toUpperCase()}, id ASC LIMIT ? OFFSET ?`
-  )
-    .bind(...params, perPage, offset)
-    .all<Photo>();
 
   const countResult = await c.env.DB.prepare(
     `SELECT COUNT(*) as total FROM photos ${whereSql}`
@@ -1077,91 +1134,220 @@ app.get("/admin/", async (c) => {
 
   const total = countResult?.total || 0;
   const totalPages = Math.ceil(total / perPage);
+  const page = Math.min(requestedPage, Math.max(totalPages, 1));
+  const offset = (page - 1) * perPage;
+
+  const result = await c.env.DB.prepare(
+    `SELECT * FROM photos ${whereSql} ORDER BY ${sortFields[sort]} ${direction.toUpperCase()}, id ASC LIMIT ? OFFSET ?`
+  )
+    .bind(...params, perPage, offset)
+    .all<Photo>();
   const photos = result.results || [];
+  const hasFilters = Boolean(q || visibility || status || source || site);
 
   const origin = url.origin;
-  const pageUrl = (targetPage: number) => {
+  const listUrl = (changes: Record<string, string | null>) => {
     const params = new URLSearchParams(url.searchParams);
     params.delete("partial");
-    params.set("page", String(targetPage));
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    }
     return `/admin/?${params}`;
   };
+  const pageUrl = (targetPage: number) => listUrl({ page: String(targetPage) });
+  const keptParams = [...url.searchParams].filter(([key]) => key !== "page" && key !== "partial");
+  const countLabel = `${total.toLocaleString("en-US")} ${total === 1 ? "photo" : "photos"}`;
+  const tableColumns = [
+    ["title", "title"], ["caption", "caption"], ["location", "location"], ["date", "date"],
+    ["tags", "tags"], ["site", "site"], ["source", "source"], [null, "size"], [null, "hidden"],
+    ["visibility", "visibility"], ["status", "status"],
+  ] as const;
 
   const resultView = (
     <div id="database-results">
-      <div class="page-title"><p id="photo-count">{total} photos · page {page} of {totalPages}</p></div>
-      {view === "table" ? (
+      <p id="photo-count" class="results-meta">{countLabel}{totalPages > 1 ? ` · page ${page} of ${totalPages}` : ""}</p>
+      {photos.length === 0 ? (
+        <div class="empty-state">
+          <h2>no photos match</h2>
+          <p>{hasFilters ? "Try a shorter search or clear the filters." : "Upload some photos to get started."}</p>
+        </div>
+      ) : view === "table" ? (
         <div class="database-view">
           <table>
             <thead><tr>
-              <th>select</th><th>photo</th><th>id</th>
-              {([ ["title", "title"], ["caption", "caption"], ["location", "location"], ["date", "date"], ["tags", "tags"], ["site", "site"], ["source", "source"], ["visibility", "visibility"], ["status", "status"] ] as const).map(([key, label]) => {
-                const params = new URLSearchParams(url.searchParams);
-                params.set("sort", key);
-                params.set("dir", sort === key && direction === "asc" ? "desc" : "asc");
-                params.set("page", "1");
-                params.delete("partial");
-                return <th><a href={`/admin/?${params}`}>{label}{sort === key ? (direction === "asc" ? " ↑" : " ↓") : ""}</a></th>;
+              <th><span class="visually-hidden">select</span></th><th>photo</th><th>id</th>
+              {tableColumns.map(([key, label]) => {
+                if (!key) return <th>{label}</th>;
+                const nextDir = sort === key && direction === "asc" ? "desc" : "asc";
+                return <th aria-sort={sort === key ? (direction === "asc" ? "ascending" : "descending") : undefined}>
+                  <a href={listUrl({ sort: key, dir: nextDir, page: "1" })}>{label}{sort === key ? (direction === "asc" ? " ↑" : " ↓") : ""}</a>
+                </th>;
               })}
             </tr></thead>
             <tbody>
               {photos.map((photo) => <tr data-photo-row={photo.id}>
                 <td><input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} /></td>
                 <td><a href={`/admin/photos/${photo.id}`}><img src={`${origin}${versionedImagePath(photo.id, imageVersion(photo), 200)}`} alt={photo.title || "photo"} loading="lazy" /></a></td>
-                <td><a href={`/admin/photos/${photo.id}`}>{photo.id}</a></td>
-                <td>{photo.title || "—"}</td><td>{photo.caption || "—"}</td><td>{photo.location || "—"}</td><td>{photo.date || "—"}</td><td>{photo.tags || "—"}</td><td>{photo.site || "—"}</td><td>{photo.source || "—"}</td><td>{photo.width && photo.height ? `${photo.width}×${photo.height}` : "—"}</td><td>{photo.exclude ? "yes" : "no"}</td><td>{photo.visibility}</td><td>{photo.status}</td>
+                <td><a href={`/admin/photos/${photo.id}`}><code>{photo.id}</code></a></td>
+                <td>{photo.title || "—"}</td><td>{photo.caption || "—"}</td><td>{photo.location || "—"}</td><td class="nowrap">{photo.date || "—"}</td><td>{parseTags(photo.tags).join(", ") || "—"}</td><td class="nowrap">{siteLabel(photo.site)}</td><td>{photo.source || "—"}</td><td class="nowrap">{photo.width && photo.height ? `${photo.width}×${photo.height}` : "—"}</td><td>{photo.exclude ? "yes" : "no"}</td><td>{photo.visibility}</td><td>{photo.status}</td>
               </tr>)}
             </tbody>
           </table>
         </div>
       ) : (
-        photos.length === 0 ? <div class="empty-state"><h2>no photos found</h2><p>upload some photos to get started</p></div> : <div class="photo-grid">
+        <div class="photo-grid">
           {photos.map((photo) => <article class="photo-card" key={photo.id} data-photo-id={photo.id}>
             <input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} />
             <a href={`/admin/photos/${photo.id}`}><img src={`${origin}${versionedImagePath(photo.id, imageVersion(photo), 200)}`} alt={photo.title || "photo"} loading="lazy" /></a>
-            <div class="photo-card-info"><a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a><div class="photo-card-meta">{photo.date || "no date"}{photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}</div><div class="photo-card-tags"><span class="tag">{photo.site}</span><span class="tag">{photo.visibility}</span><span class="tag">{photo.status}</span></div></div>
+            <div class="photo-card-info"><a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a><div class="photo-card-meta">{photo.date || "no date"}{photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}</div><div class="photo-card-tags"><span class="tag">{siteLabel(photo.site)}</span><span class="tag">{photo.visibility}</span><span class="tag">{photo.status}</span></div></div>
             <div class="photo-card-actions"><a href={`/admin/photos/${photo.id}`}>edit</a><button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button></div>
           </article>)}
         </div>
       )}
-      {totalPages > 1 && <div class="pagination">{page > 1 && <a href={pageUrl(page - 1)}>← previous</a>}<span>page {page} of {totalPages}</span>{page < totalPages && <a href={pageUrl(page + 1)}>next →</a>}</div>}
+      {totalPages > 1 && <nav class="pagination" aria-label="pages">
+        {page > 1 ? <a href={pageUrl(page - 1)}>← previous</a> : <span class="pagination-edge" aria-hidden="true">← previous</span>}
+        <form class="page-jump" method="get" action="/admin/">
+          {keptParams.map(([key, value]) => <input type="hidden" name={key} value={value} />)}
+          <label>page <input type="number" name="page" min="1" max={totalPages} value={page} inputmode="numeric" enterkeyhint="go" aria-label={`Page number, 1 to ${totalPages}`} /> of {totalPages}</label>
+          <button type="submit">go</button>
+        </form>
+        {page < totalPages ? <a href={pageUrl(page + 1)}>next →</a> : <span class="pagination-edge" aria-hidden="true">next →</span>}
+      </nav>}
     </div>
   );
   if (url.searchParams.get("partial") === "1") return c.html(resultView);
 
   return c.html(
-    <AdminLayout title="photo database">
-      <div class="page-title"><h1>photo database</h1><p>Browse every photo, search as you type, and edit selected properties in bulk.</p></div>
-      <div class="view-toggle"><a href="/admin/">grid view</a><a href={`/admin/?${new URLSearchParams({ ...Object.fromEntries(url.searchParams), view: "table" })}`}>database view</a></div>
-      <form id="admin-filters" class="admin-filters" method="get" action="/admin/">
-        <input type="hidden" name="view" value={view} />
-        <input id="admin-search" type="search" name="q" value={q} placeholder="search title, caption, location, tags, or ID" autocomplete="off" />
-        <select name="visibility"><option value="">all visibility</option>{['public', 'unlisted', 'private'].map(value => <option value={value} selected={visibility === value}>{value}</option>)}</select>
-        <select name="status"><option value="">all status</option>{['active', 'quarantined'].map(value => <option value={value} selected={status === value}>{value}</option>)}</select>
-        <select name="source"><option value="">all sources</option>{['upload', 'desktop', 'blog', 'flickr', 'cloudflare-images'].map(value => <option value={value} selected={source === value}>{value}</option>)}</select>
-        <button type="submit">filter</button>
+    <AdminLayout title="photos">
+      <div class="list-header">
+        <h1>photos</h1>
+        <nav class="view-switch" aria-label="view">
+          <a href={listUrl({ view: null, page: null })} aria-current={view === "grid" ? "page" : undefined}>grid</a>
+          <a href={listUrl({ view: "table", page: null })} aria-current={view === "table" ? "page" : undefined}>table</a>
+        </nav>
+      </div>
+      <form id="admin-filters" class="filter-bar" method="get" action="/admin/" role="search">
+        {view === "table" && <input type="hidden" name="view" value="table" />}
+        {url.searchParams.has("sort") && <input type="hidden" name="sort" value={sort} />}
+        {url.searchParams.has("dir") && <input type="hidden" name="dir" value={direction} />}
+        <div class="search-field">
+          <input id="admin-search" type="search" name="q" value={q} placeholder="search title, caption, location, tags, or ID" autocomplete="off" enterkeyhint="search" aria-label="search photos" aria-controls="recent-searches" aria-expanded="false" aria-autocomplete="list" />
+          <div id="recent-searches" class="recent-searches" role="listbox" aria-label="recent searches" hidden></div>
+        </div>
+        <div class="filter-group" role="group" aria-label="filters">
+          <select name="site" aria-label="site"><option value="">all sites</option>{SITES.map((option) => <option value={option.code} selected={site === option.code}>{option.label}</option>)}</select>
+          <select name="visibility" aria-label="visibility"><option value="">any visibility</option>{['public', 'unlisted', 'private'].map(value => <option value={value} selected={visibility === value}>{value}</option>)}</select>
+          <select name="status" aria-label="status"><option value="">any status</option>{['active', 'quarantined'].map(value => <option value={value} selected={status === value}>{value}</option>)}</select>
+          <select name="source" aria-label="source"><option value="">any source</option>{['upload', 'desktop', 'blog', 'flickr', 'cloudflare-images'].map(value => <option value={value} selected={source === value}>{value}</option>)}</select>
+        </div>
+        <a id="clear-filters" class="clear-filters" href={listUrl({ q: null, site: null, visibility: null, status: null, source: null, page: null })} hidden={!hasFilters}>clear</a>
+        <button type="submit" class="visually-hidden">apply filters</button>
       </form>
-      <div class="bulk-toolbar">
-        <label><input id="select-page" type="checkbox" /> select this page</label><strong id="selected-count">0 selected</strong>
-        <select id="bulk-action"><option value="">choose bulk action</option><option value="portfolio">move to Portfolio</option><option value="editorial">move to Editorial</option><option value="private">make Private</option><option value="activate">activate</option><option value="quarantine">quarantine</option></select>
-        <button id="apply-bulk" type="button">apply action</button>
-        <span class="database-bulk-editor"><select id="bulk-field"><option value="">edit property…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option><option value="status">status</option><option value="exclude">exclude from listings</option></select><input id="bulk-value" placeholder="new value" /><button id="apply-property" type="button">set property</button></span>
+      <div class="selection-bar">
+        <label class="select-page"><input id="select-page" type="checkbox" /> select page</label>
+        <span id="selected-count" class="selected-count">none selected</span>
+        <fieldset class="action-group" disabled>
+          <legend>move or quarantine</legend>
+          <select id="bulk-action" aria-label="action">
+            <option value="">choose…</option>
+            <optgroup label="publication"><option value="portfolio">Portfolio (public)</option><option value="editorial">Editorial (unlisted)</option><option value="private">Private</option></optgroup>
+            <optgroup label="status"><option value="activate">activate</option><option value="quarantine">quarantine</option></optgroup>
+          </select>
+          <button id="apply-bulk" type="button">apply</button>
+        </fieldset>
+        <fieldset class="action-group" disabled>
+          <legend>set a property</legend>
+          <select id="bulk-field" aria-label="property"><option value="">choose…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option><option value="status">status</option><option value="exclude">hidden from listings</option></select>
+          <input id="bulk-value" placeholder="new value" aria-label="new value" />
+          <button id="apply-property" type="button">set</button>
+        </fieldset>
       </div>
       {resultView}
       <script dangerouslySetInnerHTML={{ __html: `
             let searchTimer;
+            let saveTimer;
             let latestSearch = 0;
+            let lastClicked = null;
+            const form = document.getElementById('admin-filters');
+            const search = document.getElementById('admin-search');
             const selections = () => Array.from(document.querySelectorAll('.photo-select'));
-            const updateSelectedCount = () => { document.getElementById('selected-count').textContent = selections().filter(input => input.checked).length + ' selected'; };
+            const updateSelectedCount = () => {
+              const count = selections().filter(input => input.checked).length;
+              document.getElementById('selected-count').textContent = count ? count + ' selected' : 'none selected';
+              document.querySelectorAll('.action-group').forEach(group => { group.disabled = count === 0; });
+            };
+            document.addEventListener('click', (event) => {
+              const box = event.target.closest('.photo-select');
+              if (!box) return;
+              const boxes = selections();
+              if (event.shiftKey && lastClicked && boxes.includes(lastClicked)) {
+                const [start, end] = [boxes.indexOf(lastClicked), boxes.indexOf(box)].sort((a, b) => a - b);
+                boxes.slice(start, end + 1).forEach(input => { input.checked = box.checked; });
+              }
+              lastClicked = box;
+              updateSelectedCount();
+            });
             document.addEventListener('change', (event) => {
               if (event.target.matches('.photo-select')) updateSelectedCount();
               if (event.target.id === 'select-page') { selections().forEach(input => { input.checked = event.target.checked; }); updateSelectedCount(); }
             });
+
+            const RECENTS_KEY = 'photos-admin:recent-searches';
+            const recentList = document.getElementById('recent-searches');
+            const loadRecents = () => { try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]').filter(item => typeof item === 'string'); } catch { return []; } };
+            const saveRecent = (query) => {
+              query = query.trim();
+              if (query.length < 2) return;
+              const lower = query.toLowerCase();
+              const kept = loadRecents().filter(item => { const other = item.toLowerCase(); return other !== lower && !lower.startsWith(other); });
+              localStorage.setItem(RECENTS_KEY, JSON.stringify([query, ...kept].slice(0, 8)));
+            };
+            let activeRecent = -1;
+            const closeRecents = () => { recentList.hidden = true; search.setAttribute('aria-expanded', 'false'); search.removeAttribute('aria-activedescendant'); activeRecent = -1; };
+            const openRecents = () => {
+              const typed = search.value.trim().toLowerCase();
+              const items = loadRecents().filter(item => !typed || (item.toLowerCase().includes(typed) && item.toLowerCase() !== typed));
+              if (!items.length) return closeRecents();
+              recentList.replaceChildren(...items.map((item, index) => {
+                const option = document.createElement('div');
+                option.className = 'recent-option'; option.id = 'recent-' + index; option.setAttribute('role', 'option');
+                option.textContent = item; option.dataset.value = item;
+                return option;
+              }));
+              const clear = document.createElement('button');
+              clear.type = 'button'; clear.className = 'recent-clear'; clear.textContent = 'clear recent searches';
+              recentList.appendChild(clear);
+              recentList.hidden = false; search.setAttribute('aria-expanded', 'true'); activeRecent = -1;
+            };
+            const chooseRecent = (value) => { search.value = value; closeRecents(); saveRecent(value); refreshSearch(); };
+            search.addEventListener('focus', openRecents);
+            search.addEventListener('click', () => { if (recentList.hidden) openRecents(); });
+            search.addEventListener('blur', () => { setTimeout(closeRecents, 120); if (search.value.trim()) saveRecent(search.value); });
+            search.addEventListener('keydown', (event) => {
+              const options = Array.from(recentList.querySelectorAll('.recent-option'));
+              if (event.key === 'Escape') return closeRecents();
+              if (recentList.hidden || !options.length) return;
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                activeRecent = (activeRecent + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+                options.forEach((option, index) => option.setAttribute('aria-selected', String(index === activeRecent)));
+                search.setAttribute('aria-activedescendant', options[activeRecent].id);
+              } else if (event.key === 'Enter' && activeRecent >= 0) {
+                event.preventDefault(); chooseRecent(options[activeRecent].dataset.value);
+              }
+            });
+            recentList.addEventListener('mousedown', (event) => {
+              event.preventDefault();
+              const option = event.target.closest('.recent-option');
+              if (option) return chooseRecent(option.dataset.value);
+              if (event.target.closest('.recent-clear')) { localStorage.removeItem(RECENTS_KEY); closeRecents(); }
+            });
+
             const refreshSearch = async () => {
-              const form = document.getElementById('admin-filters');
               const params = new URLSearchParams(location.search);
-              for (const [key, value] of new FormData(form)) params.set(key, value);
-              params.set('page', '1'); params.set('partial', '1');
+              for (const [key, value] of new FormData(form)) { if (value) params.set(key, value); else params.delete(key); }
+              params.delete('page'); params.set('partial', '1');
               const requestId = ++latestSearch;
               const response = await fetch('/admin/?' + params, { headers: { 'X-Requested-With': 'fetch' } });
               if (!response.ok || requestId !== latestSearch) return;
@@ -1169,14 +1355,23 @@ app.get("/admin/", async (c) => {
               const fresh = doc.getElementById('database-results');
               if (fresh) { document.getElementById('database-results')?.replaceWith(fresh); }
               params.delete('partial'); history.replaceState({}, '', '/admin/?' + params);
-              document.getElementById('select-page').checked = false; updateSelectedCount();
+              const filtered = ['q', 'site', 'visibility', 'status', 'source'].some(key => params.get(key));
+              document.getElementById('clear-filters').hidden = !filtered;
+              document.getElementById('select-page').checked = false; lastClicked = null; updateSelectedCount();
             };
-            document.getElementById('admin-search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(refreshSearch, 250); });
+            search.addEventListener('input', () => {
+              openRecents();
+              clearTimeout(searchTimer); searchTimer = setTimeout(refreshSearch, 250);
+              clearTimeout(saveTimer); saveTimer = setTimeout(() => saveRecent(search.value), 2000);
+            });
+            form.addEventListener('change', (event) => { if (event.target.matches('select')) refreshSearch(); });
+            form.addEventListener('submit', (event) => { event.preventDefault(); saveRecent(search.value); closeRecents(); refreshSearch(); });
             document.getElementById('apply-bulk').addEventListener('click', async () => {
               const ids = selections().filter(input => input.checked).map(input => input.value);
-              const action = document.getElementById('bulk-action').value;
-              if (!ids.length || !action) return alert('Select photos and an action first.');
-              if (!confirm('Apply ' + action + ' to ' + ids.length + ' photos?')) return;
+              const select = document.getElementById('bulk-action');
+              const action = select.value;
+              if (!ids.length || !action) return alert('Choose an action first.');
+              if (!confirm('Apply "' + select.selectedOptions[0].textContent + '" to ' + ids.length + ' photos?')) return;
               const response = await fetch('/api/admin/photos/bulk', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, action }) });
               const result = await response.json(); if (!response.ok) return alert(result.error || 'bulk update failed'); location.reload();
             });
@@ -1184,21 +1379,26 @@ app.get("/admin/", async (c) => {
               const field = event.target.value;
               const options = field === 'visibility' ? [['public','public'],['unlisted','unlisted'],['private','private']] :
                 field === 'status' ? [['active','active'],['quarantined','quarantined']] :
+                field === 'site' ? [['both','both sites'],['climb-log','kylies.photos only'],['kylieis-online','kylieis.online only']] :
                 field === 'exclude' ? [['0','no'],['1','yes']] : null;
               const current = document.getElementById('bulk-value');
-              if (options && current.tagName !== 'SELECT') {
-                const select = document.createElement('select'); select.id = 'bulk-value';
-                options.forEach(([value,label]) => { const option = document.createElement('option'); option.value = value; option.textContent = label; select.appendChild(option); });
-                current.replaceWith(select);
-              } else if (!options && current.tagName !== 'INPUT') {
-                const input = document.createElement('input'); input.id = 'bulk-value'; input.placeholder = 'new value'; current.replaceWith(input);
+              let next;
+              if (options) {
+                next = document.createElement('select');
+                options.forEach(([value,label]) => { const option = document.createElement('option'); option.value = value; option.textContent = label; next.appendChild(option); });
+              } else {
+                next = document.createElement('input');
+                next.placeholder = field === 'tags' ? 'coast, fog, sunset' : field === 'date' ? 'YYYY-MM-DD' : 'new value';
               }
+              next.id = 'bulk-value'; next.setAttribute('aria-label', 'new value');
+              current.replaceWith(next);
             });
             document.getElementById('apply-property').addEventListener('click', async () => {
               const ids = selections().filter(input => input.checked).map(input => input.value);
               const field = document.getElementById('bulk-field').value;
-              const value = document.getElementById('bulk-value').value;
-              if (!ids.length || !field) return alert('Select photos and a property first.');
+              let value = document.getElementById('bulk-value').value;
+              if (!ids.length || !field) return alert('Choose a property first.');
+              if (field === 'tags') value = JSON.stringify(value.split(',').map(tag => tag.trim()).filter(Boolean));
               if (!confirm('Set ' + field + ' on ' + ids.length + ' photos?')) return;
               const response = await fetch('/api/admin/photos/bulk', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, field, value }) });
               const result = await response.json(); if (!response.ok) return alert(result.error || 'bulk update failed'); location.reload();
@@ -1237,7 +1437,7 @@ app.get("/admin/upload", async (c) => {
   const climbOptions = await getClimbOptions(c.env);
   return c.html(
     <AdminLayout title="upload photos">
-      <a href="/admin" class="back-link">← back to grid</a>
+      <a href="/admin" class="back-link">← back to photos</a>
       <div class="page-title">
         <h1>add photos</h1>
         <p>Select a few photos, choose where they belong, and keep this page open while they upload.</p>
@@ -1255,6 +1455,9 @@ app.get("/admin/upload", async (c) => {
             <option value="editorial" selected>Editorial — unlisted, usable in posts</option>
             <option value="private">Private — not publicly available</option>
           </select>
+        </div>
+        <div class="upload-field">
+          <SiteOptions selected={SITES.map((site) => site.code)} />
         </div>
         <div class="upload-field">
           <label for="title">title (optional)</label>
@@ -1300,6 +1503,10 @@ app.get("/admin/upload", async (c) => {
           event.preventDefault();
           const files = Array.from(document.getElementById('images').files || []);
           if (!files.length) return;
+          if (!form.querySelector('input[name="site"]:checked')) {
+            queue.innerHTML = '<div class="upload-item error">Choose at least one site.</div>';
+            return;
+          }
           uploading = true;
           submit.disabled = true;
           queue.innerHTML = '';
@@ -1311,6 +1518,7 @@ app.get("/admin/upload", async (c) => {
             const data = new FormData();
             data.set('image', file);
             data.set('destination', document.getElementById('destination').value);
+            form.querySelectorAll('input[name="site"]:checked').forEach(input => data.append('site', input.value));
             const title = document.getElementById('title').value.trim();
             if (title && files.length === 1) data.set('title', title);
             for (const name of ['date', 'location', 'tags']) {
@@ -1372,7 +1580,7 @@ app.get("/admin/photos/:id", async (c) => {
 
   return c.html(
     <AdminLayout title={photo.title || "untitled photo"}>
-      <a href="/admin" class="back-link">← back to grid</a>
+      <a href="/admin" class="back-link">← back to photos</a>
 
       <div class="detail-layout">
         <div>
@@ -1450,7 +1658,11 @@ app.get("/admin/photos/:id", async (c) => {
                   </select>
                 </label>
               </div>
-              <label>tags<input name="tags" value={tagsForInput(photo.tags)} placeholder="coast, fog, sunset" /></label>
+              <label>
+                <span class="ai-caption-row"><span>tags</span><button id="suggest-tags" class="ai-caption-button" type="button">suggest with AI</button></span>
+                <input id="tags-input" name="tags" value={tagsForInput(photo.tags)} placeholder="coast, fog, sunset" />
+              </label>
+              <div id="tag-suggestions" class="tag-suggestions" aria-live="polite" hidden></div>
               <label for="climb-search">formal hike</label>
               <input id="climb-search" type="search" autocomplete="off" placeholder="Filter hikes by title, date, or area" />
               <select id="climb-id" name="climbId" data-initial={primaryClimb?.climb_id || ""} aria-label="formal hike">
@@ -1463,8 +1675,8 @@ app.get("/admin/photos/:id", async (c) => {
                   return <option value={climb.id} selected={primaryClimb?.climb_id === climb.id} data-label={label.toLocaleLowerCase()}>{label}</option>;
                 })}
               </select>
+              <SiteOptions selected={sitesForValue(photo.site)} />
               <div class="edit-row">
-                <label>site<input name="site" value={photo.site || "both"} /></label>
                 <label>status
                   <select name="status">
                     <option value="active" selected={photo.status === "active"}>active</option>
@@ -1496,7 +1708,7 @@ app.get("/admin/photos/:id", async (c) => {
                   location: String(data.get('location') || '') || null,
                   date: String(data.get('date') || '') || null,
                   tags: JSON.stringify(tags),
-                  site: String(data.get('site') || 'both'),
+                  site: data.getAll('site').map(String),
                   status: String(data.get('status')),
                   visibility: String(data.get('visibility')),
                   exclude: data.get('exclude') === 'on',
@@ -1526,6 +1738,54 @@ app.get("/admin/photos/:id", async (c) => {
                   status.classList.add('saved');
                 } catch (error) {
                   status.textContent = error instanceof Error ? error.message : 'save failed';
+                } finally {
+                  button.disabled = false;
+                }
+              });
+              const tagsInput = document.getElementById('tags-input');
+              const tagBox = document.getElementById('tag-suggestions');
+              const currentTags = () => tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean);
+              const addTag = (tag) => {
+                if (!currentTags().some(existing => existing.toLowerCase() === tag)) tagsInput.value = [...currentTags(), tag].join(', ');
+              };
+              const pruneSuggestions = () => {
+                const have = currentTags().map(tag => tag.toLowerCase());
+                tagBox.querySelectorAll('.tag-chip').forEach(chip => { if (have.includes(chip.dataset.tag)) chip.remove(); });
+                if (!tagBox.querySelector('.tag-chip')) tagBox.hidden = true;
+              };
+              tagsInput.addEventListener('input', pruneSuggestions);
+              tagBox.addEventListener('click', (event) => {
+                const chip = event.target.closest('.tag-chip');
+                if (chip) addTag(chip.dataset.tag);
+                if (event.target.closest('.tag-add-all')) tagBox.querySelectorAll('.tag-chip').forEach(item => addTag(item.dataset.tag));
+                pruneSuggestions();
+              });
+              document.getElementById('suggest-tags').addEventListener('click', async (event) => {
+                const button = event.currentTarget;
+                const status = document.getElementById('edit-status');
+                button.disabled = true;
+                status.classList.remove('saved');
+                status.textContent = 'looking at the photo…';
+                try {
+                  const response = await fetch('/api/admin/photos/${photo.id}/tag-suggestions', { method: 'POST' });
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || 'tag suggestion failed');
+                  const chips = result.tags.map(tag => {
+                    const chip = document.createElement('button');
+                    chip.type = 'button'; chip.className = 'tag-chip'; chip.dataset.tag = tag;
+                    if (!result.known.includes(tag)) chip.classList.add('new');
+                    chip.textContent = '+ ' + tag;
+                    chip.title = result.known.includes(tag) ? 'used on other photos' : 'new tag';
+                    return chip;
+                  });
+                  const addAll = document.createElement('button');
+                  addAll.type = 'button'; addAll.className = 'tag-add-all'; addAll.textContent = 'add all';
+                  tagBox.replaceChildren(...chips, addAll);
+                  tagBox.hidden = false;
+                  pruneSuggestions();
+                  status.textContent = 'tap a tag to add it, then save';
+                } catch (error) {
+                  status.textContent = error instanceof Error ? error.message : 'tag suggestion failed';
                 } finally {
                   button.disabled = false;
                 }
@@ -1626,7 +1886,7 @@ app.get("/admin/photos/:id", async (c) => {
                 <tr><td>dimensions</td><td>{photo.width && photo.height ? `${photo.width}x${photo.height}` : "—"}</td></tr>
                 <tr><td>format</td><td>{photo.format}</td></tr>
                 <tr><td>size</td><td>{photo.size_bytes ? `${(photo.size_bytes / 1024 / 1024).toFixed(2)} MB` : "—"}</td></tr>
-                <tr><td>site</td><td>{photo.site}</td></tr>
+                <tr><td>site</td><td>{siteLabel(photo.site)}</td></tr>
                 <tr><td>source</td><td>{photo.source || "—"}</td></tr>
                 <tr><td>tags</td><td>{photo.tags || "—"}</td></tr>
                 <tr><td>blurhash</td><td><code style="font-size: 0.7rem;">{photo.blurhash || "—"}</code></td></tr>
@@ -1696,6 +1956,10 @@ app.patch("/api/admin/photos/bulk", async (c) => {
       if (typeof value === "string" && value.length > 2000) return c.json({ error: "Property value is too long" }, 400);
       if (body.field === "status" && !["active", "quarantined"].includes(String(value))) return c.json({ error: "Invalid status" }, 400);
       if (body.field === "visibility" && !["public", "unlisted", "private"].includes(String(value))) return c.json({ error: "Invalid visibility" }, 400);
+      if (body.field === "site") {
+        value = parseSite(value);
+        if (!value) return c.json({ error: "Invalid site" }, 400);
+      }
     }
     for (let offset = 0; offset < ids.length; offset += 25) {
       const chunk = ids.slice(offset, offset + 25);
@@ -1712,6 +1976,16 @@ app.patch("/api/admin/photos/bulk", async (c) => {
             ...collectionStatements(c.env.DB, id, publication.collection),
           ];
         });
+      } else if (body.field === "site") {
+        const placeholders = chunk.map(() => "?").join(", ");
+        const { results } = await c.env.DB.prepare(`SELECT id, visibility FROM photos WHERE id IN (${placeholders})`)
+          .bind(...chunk).all<{ id: string; visibility: string }>();
+        statements = results.flatMap(({ id, visibility }) => [
+          c.env.DB.prepare("UPDATE photos SET site = ?, updated_at = datetime('now') WHERE id = ?").bind(value, id),
+          ...(visibility === "public"
+            ? collectionStatements(c.env.DB, id, publicationForVisibility("public", value as string).collection)
+            : []),
+        ]);
       } else {
         statements = chunk.map((id) =>
           c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, id),
@@ -1758,6 +2032,13 @@ app.patch("/api/admin/photos/:id", async (c) => {
     .first<{ visibility: string; site: string | null }>();
   if (!current) return c.json({ error: "Photo not found" }, 404);
 
+  if ("site" in body) {
+    const site = parseSite(body.site);
+    if (!site) return c.json({ error: "Choose at least one site" }, 400);
+    body.site = site;
+  }
+  const site: string | null = "site" in body ? body.site : current.site;
+
   // A visibility change moves the photo between collections like the bulk actions do,
   // so a photo can't end up public while listed only in a private collection.
   let collectionChange: D1PreparedStatement[] = [];
@@ -1766,10 +2047,12 @@ app.patch("/api/admin/photos/:id", async (c) => {
     body.visibility !== current.visibility &&
     ["public", "unlisted", "private"].includes(body.visibility)
   ) {
-    const site = typeof body.site === "string" ? body.site : current.site;
     const publication = publicationForVisibility(body.visibility as Visibility, site);
     body.exclude = publication.exclude;
     collectionChange = collectionStatements(c.env.DB, id, publication.collection);
+  } else if (site !== current.site && (body.visibility ?? current.visibility) === "public") {
+    // Public photos join the kylies.photos portfolio only when shown there.
+    collectionChange = collectionStatements(c.env.DB, id, publicationForVisibility("public", site).collection);
   }
 
   const allowedFields = [
@@ -1820,6 +2103,65 @@ app.patch("/api/admin/photos/:id", async (c) => {
   }
 });
 
+const VISION_MODEL = "@cf/moondream/moondream3.1-9B-A2B";
+
+async function visionImageDataUrl(env: Env, ctx: ExecutionContext, photo: Photo): Promise<string | null> {
+  const transformKey = `${photo.r2_key}/w800.webp`;
+  const image = await env.PHOTOS_BUCKET.get(transformKey)
+    || await getOrCreateTransform(env, ctx, photo, 800, transformKey);
+  if (!image) return null;
+  const bytes = new Uint8Array(await image.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return `data:image/webp;base64,${btoa(binary)}`;
+}
+
+app.post("/api/admin/photos/:id/tag-suggestions", async (c) => {
+  const id = c.req.param("id");
+  const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?").bind(id).first<Photo>();
+  if (!photo) return c.json({ error: "Photo not found" }, 404);
+
+  const image = await visionImageDataUrl(c.env, c.executionCtx, photo);
+  if (!image) return c.json({ error: "Could not prepare image for tagging" }, 409);
+
+  const vocabulary = await c.env.DB.prepare(`
+    SELECT lower(trim(tag.value)) AS tag, COUNT(*) AS uses
+    FROM photos, json_each(photos.tags) AS tag
+    WHERE json_valid(photos.tags) AND tag.type = 'text' AND trim(tag.value) != ''
+    GROUP BY lower(trim(tag.value))
+    ORDER BY uses DESC, tag
+    LIMIT 500
+  `).all<{ tag: string; uses: number }>();
+  // The library vocabulary includes names and fragments, so it only shapes
+  // the answer after the fact rather than being offered to the model.
+  const known = vocabulary.results.map(({ tag }) => tag);
+  const existing = parseTags(photo.tags);
+  const prompt = [
+    `List ${MAX_TAG_SUGGESTIONS} short tags for this outdoor photo, as a comma-separated list.`,
+    "Each tag is one to three lowercase words describing what is clearly visible: terrain, landform, water, season, weather, light, or activity.",
+    "Do not name specific places or people. No hashtags, no sentences.",
+    photo.title ? `Photo title: ${photo.title}` : "",
+    photo.location ? `Known location: ${photo.location}` : "",
+    existing.length ? `Already tagged: ${existing.join(", ")}` : "",
+    "Return only the list.",
+  ].filter(Boolean).join("\n");
+
+  const result = await c.env.AI.run(VISION_MODEL, {
+    task: "query",
+    image,
+    question: prompt,
+    reasoning: false,
+    temperature: 0.2,
+    max_tokens: 64,
+  });
+  const raw = "answer" in result && typeof result.answer === "string" ? result.answer : "";
+  const tags = parseTagSuggestions(raw, known, existing);
+  if (tags.length === 0) return c.json({ error: "AI returned no usable tags" }, 502);
+  return c.json({ tags, known: tags.filter((tag) => known.includes(tag)), model: VISION_MODEL });
+});
+
 app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
   const id = c.req.param("id");
   const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?")
@@ -1827,16 +2169,8 @@ app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
     .first<Photo>();
   if (!photo) return c.json({ error: "Photo not found" }, 404);
 
-  const transformKey = `${photo.r2_key}/w800.webp`;
-  const image = await c.env.PHOTOS_BUCKET.get(transformKey)
-    || await getOrCreateTransform(c.env, c.executionCtx, photo, 800, transformKey);
+  const image = await visionImageDataUrl(c.env, c.executionCtx, photo);
   if (!image) return c.json({ error: "Could not prepare image for captioning" }, 409);
-
-  const bytes = new Uint8Array(await image.arrayBuffer());
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
   const examples = await c.env.DB.prepare(`
     SELECT title FROM photos
     WHERE title IS NOT NULL AND trim(title) != ''
@@ -1853,9 +2187,9 @@ app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
     "Return only the caption.",
   ].filter(Boolean).join("\n");
 
-  const result = await c.env.AI.run("@cf/moondream/moondream3.1-9B-A2B", {
+  const result = await c.env.AI.run(VISION_MODEL, {
     task: "query",
-    image: `data:image/webp;base64,${btoa(binary)}`,
+    image,
     question: prompt,
     reasoning: false,
     temperature: 0.25,
@@ -1864,7 +2198,7 @@ app.post("/api/admin/photos/:id/caption-suggestion", async (c) => {
   const raw = "answer" in result && typeof result.answer === "string" ? result.answer : "";
   const caption = raw.trim().replace(/^['"]|['"]$/g, "").replace(/\.$/, "").slice(0, 200);
   if (!caption) return c.json({ error: "AI returned no caption" }, 502);
-  return c.json({ caption, model: "@cf/moondream/moondream3.1-9B-A2B" });
+  return c.json({ caption, model: VISION_MODEL });
 });
 
 app.put("/api/admin/photos/:id/climb", async (c) => {
@@ -2005,7 +2339,9 @@ app.post("/api/admin/upload", async (c) => {
   const requestedTitle = formData.get("title") as string | null;
   const location = formData.get("location") as string | null;
   const date = formData.get("date") as string | null;
-  const site = (formData.get("site") as string | null) || "both";
+  const siteValues = formData.getAll("site");
+  const site = siteValues.length ? parseSite(siteValues) : "both";
+  if (!site) return c.json({ error: "Choose at least one valid site" }, 400);
   const tags = formData.get("tags") as string | null;
   const destination = (formData.get("destination") as string | null) || "editorial";
   const climbId = (formData.get("climbId") as string | null)?.trim() || null;
@@ -2028,13 +2364,8 @@ app.post("/api/admin/upload", async (c) => {
     }, 400);
   }
 
-  const destinations = {
-    portfolio: { visibility: "public", exclude: 0, collection: "portfolio" },
-    editorial: { visibility: "unlisted", exclude: 1, collection: "kylies-photos-content" },
-    private: { visibility: "private", exclude: 1, collection: null },
-  } as const;
-  if (!(destination in destinations)) return c.json({ error: "Invalid destination" }, 400);
-  const publication = destinations[destination as keyof typeof destinations];
+  if (!Object.hasOwn(PUBLICATIONS, destination)) return c.json({ error: "Invalid destination" }, 400);
+  const publication = publicationForVisibility(PUBLICATIONS[destination as PublicationAction].visibility, site);
 
   // Generate ID and determine format from MIME type
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
