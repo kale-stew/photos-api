@@ -1,0 +1,1315 @@
+{
+  "sha256": "6dfcbcb3176fb091c1c27bb9f357e43b6f29092567dc58497d5f56a2d0081e3d",
+  "rowsRead": 921,
+  "rowsChanged": 138,
+  "notes": {
+    "lowercased": 34,
+    "collapsed \"fall colors\" to \"fall\"": 11,
+    "joined \"class 3\" as \"c3\"": 10,
+    "renamed \"bells\" -> \"maroon bells\"": 9,
+    "renamed \"14ers\" -> \"14er\"": 9,
+    "joined \"class 4\" as \"c4\"": 7,
+    "joined \"front range\"": 6,
+    "joined \"class 2\" as \"c2\"": 5,
+    "converted comma text to a JSON array": 4,
+    "joined \"alpine lake\"": 4,
+    "renamed \"animals\" -> \"animal\"": 4,
+    "joined \"red rocks\"": 4,
+    "renamed \"wildflower\" -> \"wildflowers\"": 3,
+    "joined \"wildlife conservancy\"": 3,
+    "joined \"slot canyon\"": 3,
+    "joined \"san francisco\"": 3,
+    "renamed \"flower\" -> \"flowers\"": 2,
+    "renamed \"13ers\" -> \"13er\"": 2,
+    "joined \"north maroon\"": 2,
+    "joined \"lake como\"": 2,
+    "removed \"np\"": 2,
+    "removed \"luis\" (in title)": 2,
+    "joined \"mallory cave\"": 1,
+    "joined \"mayflower gulch\"": 1,
+    "renamed \"centennials\" -> \"centennial\"": 1,
+    "joined \"maroon peak\"": 1,
+    "removed \"kyle\" (in title)": 1,
+    "joined \"angel's landing\"": 1,
+    "removed \"sara\" (in title)": 1,
+    "removed duplicate \"14er\"": 1,
+    "renamed \"lakes\" -> \"lake\"": 1,
+    "joined \"capitol reef\"": 1,
+    "joined \"little bear\"": 1,
+    "joined \"national park\"": 1,
+    "joined \"palm trees\"": 1,
+    "renamed \"scamble\" -> \"scramble\"": 1,
+    "joined \"pillar point\"": 1,
+    "joined \"black bear\"": 1,
+    "renamed \"1434\" -> \"14er\"": 1,
+    "joined \"class 1\" as \"c1\"": 1,
+    "joined \"manitou springs\"": 1,
+    "joined \"tenmile range\"": 1,
+    "joined \"maroon bells\"": 1
+  },
+  "leftAsIs": [
+    "c2",
+    "c3",
+    "c4",
+    "sf",
+    "c1"
+  ],
+  "changes": [
+    {
+      "id": "00c1be77ab1e",
+      "title": "View from Snow King",
+      "before": "[\"lupine\",\"flower\"]",
+      "after": "[\"lupine\",\"flowers\"]",
+      "notes": [
+        "renamed \"flower\" -> \"flowers\""
+      ]
+    },
+    {
+      "id": "031c48a93cf0",
+      "title": "Climbing in Trapani",
+      "before": "rock climbing, kylie",
+      "after": "[\"rock climbing\",\"kylie\"]",
+      "notes": [
+        "converted comma text to a JSON array"
+      ]
+    },
+    {
+      "id": "09449442a846",
+      "title": "Flatiron Foothills",
+      "before": "[\"Mallory\",\"Cave\"]",
+      "after": "[\"mallory cave\"]",
+      "notes": [
+        "joined \"mallory cave\""
+      ]
+    },
+    {
+      "id": "0b8e94869b2e",
+      "title": "Elbert’s Summit Ridge",
+      "before": "[\"14er\",\"cairn\",\"class\",\"2\"]",
+      "after": "[\"14er\",\"cairn\",\"c2\"]",
+      "notes": [
+        "joined \"class 2\" as \"c2\""
+      ]
+    },
+    {
+      "id": "0b9770163d76",
+      "title": "Descending North Maroon",
+      "before": "[\"14er\",\"bells\",\"Kylie\"]",
+      "after": "[\"14er\",\"maroon bells\",\"kylie\"]",
+      "notes": [
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "0ba8082fe4d7",
+      "title": "Ascending Fourmile Creek",
+      "before": "[\"Ally\",\"wind\"]",
+      "after": "[\"ally\",\"wind\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "0ee3103ae462",
+      "title": "Snowy Uncomp descent",
+      "before": "[\"14er\",\"Luis\"]",
+      "after": "[\"14er\",\"luis\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "0fae5cc6bc9d",
+      "title": "Kelso Ridge",
+      "before": "[\"14er\",\"class\",\"3\",\"torreys\"]",
+      "after": "[\"14er\",\"c3\",\"torreys\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "0ff1e521095b",
+      "title": "Sheep Mountain Sunset",
+      "before": "[\"mayflower\",\"gulch\"]",
+      "after": "[\"mayflower gulch\"]",
+      "notes": [
+        "joined \"mayflower gulch\""
+      ]
+    },
+    {
+      "id": "11c7fba5f587",
+      "title": "River Crossing",
+      "before": "[\"front\",\"range\"]",
+      "after": "[\"front range\"]",
+      "notes": [
+        "joined \"front range\""
+      ]
+    },
+    {
+      "id": "12e5e69305f1",
+      "title": "Columbine Wildflower",
+      "before": "[\"wildflower\"]",
+      "after": "[\"wildflowers\"]",
+      "notes": [
+        "renamed \"wildflower\" -> \"wildflowers\""
+      ]
+    },
+    {
+      "id": "133a5019174a",
+      "title": "Descending Gemini Peak",
+      "before": "[\"13er\",\"class\",\"2\"]",
+      "after": "[\"13er\",\"c2\"]",
+      "notes": [
+        "joined \"class 2\" as \"c2\""
+      ]
+    },
+    {
+      "id": "141a37c5b106",
+      "title": "Ascending Lulu Gulch",
+      "before": "[\"pano\",\"Kyle\",\"Otis\",\"14er\",\"sunrise\"]",
+      "after": "[\"pano\",\"kyle\",\"otis\",\"14er\",\"sunrise\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "17340517f3e4",
+      "title": "Descending Pyramid Peak",
+      "before": "[\"Kylie\",\"14er\"]",
+      "after": "[\"kylie\",\"14er\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "17a90486ab68",
+      "title": "Mount Sneffels Sunrise",
+      "before": "[\"14er\",\"class\",\"3\"]",
+      "after": "[\"14er\",\"c3\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "19eeb6eabe71",
+      "title": "Looking Down the Chute",
+      "before": "[\"14ers\",\"c3\",\"sneffels\"]",
+      "after": "[\"14er\",\"c3\",\"sneffels\"]",
+      "notes": [
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "1e96979188d5",
+      "title": "Gaining North Maroon",
+      "before": "[\"Luis\",\"14er\",\"class\",\"3\",\"bells\"]",
+      "after": "[\"luis\",\"14er\",\"c3\",\"maroon bells\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\"",
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "1f31e35c22ca",
+      "title": "Scambling Falcon Ridge",
+      "before": "kylie",
+      "after": "[\"kylie\"]",
+      "notes": [
+        "converted comma text to a JSON array"
+      ]
+    },
+    {
+      "id": "20004770e92f",
+      "title": "The Turret Group",
+      "before": "[\"13ers\",\"centennials\"]",
+      "after": "[\"13er\",\"centennial\"]",
+      "notes": [
+        "renamed \"13ers\" -> \"13er\"",
+        "renamed \"centennials\" -> \"centennial\""
+      ]
+    },
+    {
+      "id": "26951d34a654",
+      "title": "Above Herman Gulch",
+      "before": "[\"13er\",\"front\",\"range\"]",
+      "after": "[\"13er\",\"front range\"]",
+      "notes": [
+        "joined \"front range\""
+      ]
+    },
+    {
+      "id": "298801af144c",
+      "title": "Fall in the San Juans",
+      "before": "[\"fall\",\"colors\",\"pano\"]",
+      "after": "[\"fall\",\"pano\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "2ac93ca0c3d4",
+      "title": "Upper Twin Lakes Basin",
+      "before": "[\"lake\",\"14ers\",\"windom\"]",
+      "after": "[\"lake\",\"14er\",\"windom\"]",
+      "notes": [
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "2dfd77946675",
+      "title": "Descending Torreys",
+      "before": "[\"Ally\",\"Kyle\",\"14er\",\"sunset\"]",
+      "after": "[\"ally\",\"kyle\",\"14er\",\"sunset\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "2ef37288a823",
+      "title": "The Bells Traverse",
+      "before": "[\"class\",\"4\",\"14ers\",\"maroon\",\"peak\",\"north\",\"maroon\"]",
+      "after": "[\"c4\",\"14er\",\"maroon peak\",\"north maroon\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\"",
+        "joined \"maroon peak\"",
+        "joined \"north maroon\"",
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "2f35a5b1811a",
+      "title": "Ascending Fletcher Mountain",
+      "before": "[\"snow\",\"13er\",\"Luis\",\"Ally\",\"quandary\"]",
+      "after": "[\"snow\",\"13er\",\"luis\",\"ally\",\"quandary\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "30ee93d42d86",
+      "title": "Self Portrait",
+      "before": "[\"moab\",\"sunset\",\"Kylie\"]",
+      "after": "[\"moab\",\"sunset\",\"kylie\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "30f226264260",
+      "title": "Birdseye Primrose",
+      "before": "[\"wildflower\",\"flora\"]",
+      "after": "[\"wildflowers\",\"flora\"]",
+      "notes": [
+        "renamed \"wildflower\" -> \"wildflowers\""
+      ]
+    },
+    {
+      "id": "310bf6122b2c",
+      "title": "Ellingwood Point",
+      "before": "[\"14er\",\"lake\",\"como\"]",
+      "after": "[\"14er\",\"lake como\"]",
+      "notes": [
+        "joined \"lake como\""
+      ]
+    },
+    {
+      "id": "3349d3fd5e81",
+      "title": "Cottonwood Lake #3",
+      "before": "[\"alpine\",\"lake\"]",
+      "after": "[\"alpine lake\"]",
+      "notes": [
+        "joined \"alpine lake\""
+      ]
+    },
+    {
+      "id": "349d5c8ed1f4",
+      "title": "Poppies on Mount Diablo",
+      "before": "[\"wildflower\"]",
+      "after": "[\"wildflowers\"]",
+      "notes": [
+        "renamed \"wildflower\" -> \"wildflowers\""
+      ]
+    },
+    {
+      "id": "3a28179a2f3d",
+      "title": "Kyle Ascending Wilson Peak",
+      "before": "[\"kyle\",\"14er\",\"sunrise\"]",
+      "after": "[\"14er\",\"sunrise\"]",
+      "notes": [
+        "removed \"kyle\" (in title)"
+      ]
+    },
+    {
+      "id": "3fe929e4e91c",
+      "title": "Goat overhead",
+      "before": "[\"14er\",\"animals\",\"wildlife\"]",
+      "after": "[\"14er\",\"animal\",\"wildlife\"]",
+      "notes": [
+        "renamed \"animals\" -> \"animal\""
+      ]
+    },
+    {
+      "id": "442a530a7d6a",
+      "title": "Descending Mount Garfield",
+      "before": "[\"Ally\"]",
+      "after": "[\"ally\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "470130de6f15",
+      "title": "Sawtooth Ridge Sunset",
+      "before": "[\"14er\",\"class\",\"3\"]",
+      "after": "[\"14er\",\"c3\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "4721228c6285",
+      "title": "Stormy Escalante",
+      "before": "[\"backpacking\",\"red\",\"rocks\",\"desert\"]",
+      "after": "[\"backpacking\",\"red rocks\",\"desert\"]",
+      "notes": [
+        "joined \"red rocks\""
+      ]
+    },
+    {
+      "id": "48a0c8b78dec",
+      "title": "Patty the Bear",
+      "before": "[\"wildlife\",\"conservancy\"]",
+      "after": "[\"wildlife conservancy\"]",
+      "notes": [
+        "joined \"wildlife conservancy\""
+      ]
+    },
+    {
+      "id": "48dce01610b7",
+      "title": "Summit of Little Bear",
+      "before": "[\"14ers\"]",
+      "after": "[\"14er\"]",
+      "notes": [
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "48e662b4d505",
+      "title": "Descending Fletcher Mountain",
+      "before": "[\"snow\",\"13er\",\"Luis\",\"Ally\"]",
+      "after": "[\"snow\",\"13er\",\"luis\",\"ally\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "4c17460f42bd",
+      "title": "“Point of No Return”",
+      "before": "[\"angel’s\",\"landing\"]",
+      "after": "[\"angel's landing\"]",
+      "notes": [
+        "joined \"angel's landing\""
+      ]
+    },
+    {
+      "id": "54676dfa884e",
+      "title": "Sara in the North Window",
+      "before": "[\"sara\"]",
+      "after": "[]",
+      "notes": [
+        "removed \"sara\" (in title)"
+      ]
+    },
+    {
+      "id": "55243bacc1cb",
+      "title": "Sunset Cairn",
+      "before": "[\"14er\",\"class\",\"2\"]",
+      "after": "[\"14er\",\"c2\"]",
+      "notes": [
+        "joined \"class 2\" as \"c2\""
+      ]
+    },
+    {
+      "id": "59d506610984",
+      "title": "Snowy Mount Democrat Ascent",
+      "before": "[\"14er\",\"Kylie\",\"snowflake\",\"14er\"]",
+      "after": "[\"14er\",\"kylie\",\"snowflake\"]",
+      "notes": [
+        "removed duplicate \"14er\""
+      ]
+    },
+    {
+      "id": "5b906a5c57c7",
+      "title": "The Cranberry Trail",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "5bf333a833d1",
+      "title": "Descending Windom Peak",
+      "before": "[\"14er\",\"lakes\"]",
+      "after": "[\"14er\",\"lake\"]",
+      "notes": [
+        "renamed \"lakes\" -> \"lake\""
+      ]
+    },
+    {
+      "id": "60801410996b",
+      "title": "On K’esugi Ridge",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "613e919170af",
+      "title": "Otis in Little Death Hollow",
+      "before": "[\"slot\",\"canyon\"]",
+      "after": "[\"slot canyon\"]",
+      "notes": [
+        "joined \"slot canyon\""
+      ]
+    },
+    {
+      "id": "640a99fbbba4",
+      "title": "Walking Among Giants",
+      "before": "[\"Kyle\",\"Otis\",\"desert\"]",
+      "after": "[\"kyle\",\"otis\",\"desert\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "64940d80faa8",
+      "title": "Monument Valley",
+      "before": "[\"np\",\"desert\"]",
+      "after": "[\"desert\"]",
+      "notes": [
+        "removed \"np\""
+      ]
+    },
+    {
+      "id": "668be615a6c6",
+      "title": "Herman Gulch Wildflowers",
+      "before": "[\"front\",\"range\",\"spring\"]",
+      "after": "[\"front range\",\"spring\"]",
+      "notes": [
+        "joined \"front range\""
+      ]
+    },
+    {
+      "id": "67a3928d81c3",
+      "title": "Luis descending Mountaineer's",
+      "before": "[\"14er\",\"luis\",\"13er\"]",
+      "after": "[\"14er\",\"13er\"]",
+      "notes": [
+        "removed \"luis\" (in title)"
+      ]
+    },
+    {
+      "id": "683825f483bd",
+      "title": "On Meeks Mesa",
+      "before": "[\"capitol\",\"reef\"]",
+      "after": "[\"capitol reef\"]",
+      "notes": [
+        "joined \"capitol reef\""
+      ]
+    },
+    {
+      "id": "696617804336",
+      "title": "Luis on Missouri Ridge",
+      "before": "[\"14er\",\"Luis\"]",
+      "after": "[\"14er\"]",
+      "notes": [
+        "removed \"luis\" (in title)"
+      ]
+    },
+    {
+      "id": "6a70e3084377",
+      "title": "Heading to Sherman from Gemini",
+      "before": "[\"13er\",\"14er\",\"class\",\"2\"]",
+      "after": "[\"13er\",\"14er\",\"c2\"]",
+      "notes": [
+        "joined \"class 2\" as \"c2\""
+      ]
+    },
+    {
+      "id": "6a8da82fa17b",
+      "title": "Alpenglow against North Star",
+      "before": "[\"Kyle\",\"14er\",\"13er\",\"sunrise\"]",
+      "after": "[\"kyle\",\"14er\",\"13er\",\"sunrise\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "6b926723ad52",
+      "title": "Uncompahgre Summit",
+      "before": "[\"Luis\",\"14er\"]",
+      "after": "[\"luis\",\"14er\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "6bb987f6bd7f",
+      "title": "Movie Road Views",
+      "before": "[\"camp\",\"Kyle\"]",
+      "after": "[\"camp\",\"kyle\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "6c0e91103a5b",
+      "title": "Alamo Park views",
+      "before": "city, sunset, flowers",
+      "after": "[\"city\",\"sunset\",\"flowers\"]",
+      "notes": [
+        "converted comma text to a JSON array"
+      ]
+    },
+    {
+      "id": "6cd1e21fec9b",
+      "title": "Snowy Mount Flora",
+      "before": "[\"13er\",\"12er\",\"Hannah\"]",
+      "after": "[\"13er\",\"12er\",\"hannah\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "6d4e9c0ef3cc",
+      "title": "Flying into Port Alsworth",
+      "before": "[\"plane\",\"river\",\"fall\",\"colors\"]",
+      "after": "[\"plane\",\"river\",\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "6ec8c5213d62",
+      "title": "Hiking Capitol Creek",
+      "before": "[\"Kylie\"]",
+      "after": "[\"kylie\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "758cba51c565",
+      "title": "Lake Como Sunset",
+      "before": "[\"alpenglow\",\"14ers\",\"little\",\"bear\"]",
+      "after": "[\"alpenglow\",\"14er\",\"little bear\"]",
+      "notes": [
+        "joined \"little bear\"",
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "769429710ee3",
+      "title": "Escalante Cairn",
+      "before": "[\"desert\",\"red\",\"rocks\"]",
+      "after": "[\"desert\",\"red rocks\"]",
+      "notes": [
+        "joined \"red rocks\""
+      ]
+    },
+    {
+      "id": "77f9b7d430a5",
+      "title": "Grays Peak Goats",
+      "before": "[\"14er\",\"wildlife\",\"animals\"]",
+      "after": "[\"14er\",\"wildlife\",\"animal\"]",
+      "notes": [
+        "renamed \"animals\" -> \"animal\""
+      ]
+    },
+    {
+      "id": "7a81bdb30337",
+      "title": "Flying into Port Alsworth",
+      "before": "[\"plane\",\"lake\",\"fall\",\"colors\"]",
+      "after": "[\"plane\",\"lake\",\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "7b8134742290",
+      "title": "Ascending Snow Creek Falls",
+      "before": "[\"backpacking\",\"Laura\"]",
+      "after": "[\"backpacking\",\"laura\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "7ce6a6abc229",
+      "title": "Walking off The Precipice",
+      "before": "[\"14er\",\"class\",\"4\",\"Luis\",\"bells\",\"north\",\"maroon\"]",
+      "after": "[\"14er\",\"c4\",\"luis\",\"maroon bells\",\"north maroon\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\"",
+        "joined \"north maroon\"",
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "812c6dd8e305",
+      "title": "Greyrock Haze",
+      "before": "[\"Kylie\",\"summit\"]",
+      "after": "[\"kylie\",\"summit\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "854b1f542cf3",
+      "title": "Driving in the San Juans",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "87c629546613",
+      "title": "On top of Little Brown Bench",
+      "before": "[\"slot\",\"canyon\"]",
+      "after": "[\"slot canyon\"]",
+      "notes": [
+        "joined \"slot canyon\""
+      ]
+    },
+    {
+      "id": "8d4fd24a6187",
+      "title": "The Great Sand Dunes",
+      "before": "[\"14ers\",\"national\",\"park\"]",
+      "after": "[\"14er\",\"national park\"]",
+      "notes": [
+        "joined \"national park\"",
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "914c8feab28e",
+      "title": "Sherman Ridge",
+      "before": "[\"14er\",\"Holly\"]",
+      "after": "[\"14er\",\"holly\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "929c1be8a113",
+      "title": "Panoramic View from Montara North",
+      "before": "[\"san\",\"francisco\",\"sf\"]",
+      "after": "[\"san francisco\",\"sf\"]",
+      "notes": [
+        "joined \"san francisco\""
+      ]
+    },
+    {
+      "id": "93d8c57e3473",
+      "title": "Missouri Ridge Descent",
+      "before": "[\"14er\",\"Luis\"]",
+      "after": "[\"14er\",\"luis\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "945660822d72",
+      "title": "Ascending Mount Democrat",
+      "before": "[\"snowflake\",\"14er\",\"Kylie\"]",
+      "after": "[\"snowflake\",\"14er\",\"kylie\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "96a12a4abf0b",
+      "title": "Sawtooth Ridge",
+      "before": "[\"14er\",\"class\",\"3\"]",
+      "after": "[\"14er\",\"c3\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "97b3cd943e2f",
+      "title": "Introspective marmot descending the Wetterhorn",
+      "before": "[\"animals\"]",
+      "after": "[\"animal\"]",
+      "notes": [
+        "renamed \"animals\" -> \"animal\""
+      ]
+    },
+    {
+      "id": "983e1a7d617a",
+      "title": "Ascending Maroon Peak",
+      "before": "[\"Kylie\",\"14er\"]",
+      "after": "[\"kylie\",\"14er\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "9bdd263c9a8b",
+      "title": "Mount Silverheels",
+      "before": "[\"Kyle\",\"Otis\",\"13er\",\"snow\",\"panorama\"]",
+      "after": "[\"kyle\",\"otis\",\"13er\",\"snow\",\"panorama\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "9dd9c569407a",
+      "title": "Traversing the Avenue",
+      "before": "[\"Ally\",\"c3\",\"14er\"]",
+      "after": "[\"ally\",\"c3\",\"14er\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "a02b657ca9df",
+      "title": "Fall Colors on Lake Kontrashibuna",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "a400ca3db064",
+      "title": "The Citadel",
+      "before": "[\"13er\",\"class\",\"3\",\"solo\"]",
+      "after": "[\"13er\",\"c3\",\"solo\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "a4ac867c7f67",
+      "title": "Maroon Peak",
+      "before": "[\"14er\",\"class\",\"4\",\"bells\"]",
+      "after": "[\"14er\",\"c4\",\"maroon bells\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\"",
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "a54d3d45ee6a",
+      "title": "January in Arizona",
+      "before": "[\"palm\",\"trees\"]",
+      "after": "[\"palm trees\"]",
+      "notes": [
+        "joined \"palm trees\""
+      ]
+    },
+    {
+      "id": "a7916bae2fde",
+      "title": "Top of the Bell Cord",
+      "before": "[\"traverse\",\"class\",\"4\"]",
+      "after": "[\"traverse\",\"c4\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\""
+      ]
+    },
+    {
+      "id": "a8e192b59ce0",
+      "title": "Glacier Gorge Sunrise",
+      "before": "[\"14er\",\"front\",\"range\"]",
+      "after": "[\"14er\",\"front range\"]",
+      "notes": [
+        "joined \"front range\""
+      ]
+    },
+    {
+      "id": "ad26a3e3ef1c",
+      "title": "Twin Sisters Summit",
+      "before": "[\"12er\",\"Kylie\",\"meeker\"]",
+      "after": "[\"12er\",\"kylie\",\"meeker\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "adab7084f4e2",
+      "title": "Alpine Sunflowers on Eolus Ridge",
+      "before": "[\"wildflowers\",\"scamble\"]",
+      "after": "[\"wildflowers\",\"scramble\"]",
+      "notes": [
+        "renamed \"scamble\" -> \"scramble\""
+      ]
+    },
+    {
+      "id": "af4572f68252",
+      "title": "River Crossing",
+      "before": "[\"Kylie\"]",
+      "after": "[\"kylie\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "b0fe7acd8a5d",
+      "title": "Stormy Crater Lake",
+      "before": "[\"14er\",\"bells\",\"aspen\"]",
+      "after": "[\"14er\",\"maroon bells\",\"aspen\"]",
+      "notes": [
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "b11efb5e7f51",
+      "title": "Driving through Denali",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "b34190a37607",
+      "title": "Ascending Maroon Peak",
+      "before": "[\"bells\",\"14er\"]",
+      "after": "[\"maroon bells\",\"14er\"]",
+      "notes": [
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "b4de5a3d8440",
+      "title": "Summit selfie",
+      "before": "[\"13er\",\"Kylie\"]",
+      "after": "[\"13er\",\"kylie\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "b60b7a529bfa",
+      "title": "Descending West Maroon",
+      "before": "[\"backpacking\",\"snow\",\"Kyle\"]",
+      "after": "[\"backpacking\",\"snow\",\"kyle\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "b705fa1981c0",
+      "title": "Running along the rim",
+      "before": "[\"Kyle\"]",
+      "after": "[\"kyle\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "b8b083b43713",
+      "title": "Upper Blue Lake",
+      "before": "[\"lake\",\"como\"]",
+      "after": "[\"lake como\"]",
+      "notes": [
+        "joined \"lake como\""
+      ]
+    },
+    {
+      "id": "b962fd18141c",
+      "title": "Fall in Yankee Boy Basin",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "bb5923556936",
+      "title": "Horseshoe Mountain Goats",
+      "before": "[\"13er\",\"wildlife\",\"animals\"]",
+      "after": "[\"13er\",\"wildlife\",\"animal\"]",
+      "notes": [
+        "renamed \"animals\" -> \"animal\""
+      ]
+    },
+    {
+      "id": "be1c961bef60",
+      "title": "El Granada Sunset",
+      "before": "[\"coast\",\"pillar\",\"point\",\"mavericks\"]",
+      "after": "[\"coast\",\"pillar point\",\"mavericks\"]",
+      "notes": [
+        "joined \"pillar point\""
+      ]
+    },
+    {
+      "id": "be71dbe33d01",
+      "title": "Mount Blue Sky Sunset",
+      "before": "[\"14er\",\"class\",\"2\"]",
+      "after": "[\"14er\",\"c2\"]",
+      "notes": [
+        "joined \"class 2\" as \"c2\""
+      ]
+    },
+    {
+      "id": "bfe01e9f7acc",
+      "title": "Kona the Bear",
+      "before": "[\"wildlife\",\"conservancy\",\"black\",\"bear\"]",
+      "after": "[\"wildlife conservancy\",\"black bear\"]",
+      "notes": [
+        "joined \"wildlife conservancy\"",
+        "joined \"black bear\""
+      ]
+    },
+    {
+      "id": "c12ab475e811",
+      "title": "Over the Knife's Edge",
+      "before": "[\"1434\",\"c4\"]",
+      "after": "[\"14er\",\"c4\"]",
+      "notes": [
+        "renamed \"1434\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "c15f3eb2a757",
+      "title": "Cloudy Guanella",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "c55a2b483870",
+      "title": "Descending Naylor Road",
+      "before": "[\"Ally\",\"Daniel\",\"Kyle\",\"Otis\"]",
+      "after": "[\"ally\",\"daniel\",\"kyle\",\"otis\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "c5c09e239ea0",
+      "title": "Blanca Ellingwood Traverse",
+      "before": "[\"14ers\",\"alpenglow\"]",
+      "after": "[\"14er\",\"alpenglow\"]",
+      "notes": [
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "c752fb73953c",
+      "title": "Fall Colors on Lake Kontrashibuna",
+      "before": "[\"fall\",\"colors\"]",
+      "after": "[\"fall\"]",
+      "notes": [
+        "collapsed \"fall colors\" to \"fall\""
+      ]
+    },
+    {
+      "id": "c812079d96e6",
+      "title": "The Citadel",
+      "before": "[\"13er\",\"front\",\"range\",\"scramble\"]",
+      "after": "[\"13er\",\"front range\",\"scramble\"]",
+      "notes": [
+        "joined \"front range\""
+      ]
+    },
+    {
+      "id": "ca5f07013252",
+      "title": "North Maroon Descent",
+      "before": "[\"14er\",\"class\",\"4\",\"bells\"]",
+      "after": "[\"14er\",\"c4\",\"maroon bells\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\"",
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "cca7b465cf23",
+      "title": "Descending Uncompahgre",
+      "before": "[\"14er\",\"Kyle\",\"Otis\"]",
+      "after": "[\"14er\",\"kyle\",\"otis\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "cccba2c7e156",
+      "title": "Delta Lake",
+      "before": "[\"alpine\",\"lake\"]",
+      "after": "[\"alpine lake\"]",
+      "notes": [
+        "joined \"alpine lake\""
+      ]
+    },
+    {
+      "id": "cce25d692be1",
+      "title": "Twix the Porcupine",
+      "before": "[\"wildlife\",\"conservancy\"]",
+      "after": "[\"wildlife conservancy\"]",
+      "notes": [
+        "joined \"wildlife conservancy\""
+      ]
+    },
+    {
+      "id": "cd3d9c83d7a0",
+      "title": "Looking south from Little Brown Bench",
+      "before": "[\"slot\",\"canyon\"]",
+      "after": "[\"slot canyon\"]",
+      "notes": [
+        "joined \"slot canyon\""
+      ]
+    },
+    {
+      "id": "cd6efa763c29",
+      "title": "Looking at Pyramid Peak",
+      "before": "[\"bells\",\"14er\",\"class\",\"4\",\"descend\"]",
+      "after": "[\"maroon bells\",\"14er\",\"c4\",\"descend\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\"",
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "ce535a9b01c0",
+      "title": "Alpenglow on Handies Peak",
+      "before": "[\"14er\",\"class\",\"1\",\"Ally\",\"Kyle\"]",
+      "after": "[\"14er\",\"c1\",\"ally\",\"kyle\"]",
+      "notes": [
+        "joined \"class 1\" as \"c1\""
+      ]
+    },
+    {
+      "id": "d1af445d32fb",
+      "title": "Views from the crag",
+      "before": "trapani",
+      "after": "[\"trapani\"]",
+      "notes": [
+        "converted comma text to a JSON array"
+      ]
+    },
+    {
+      "id": "d86baf0a086e",
+      "title": "Saddle Hill View",
+      "before": "[\"sf\",\"san\",\"francisco\",\"city\"]",
+      "after": "[\"sf\",\"san francisco\",\"city\"]",
+      "notes": [
+        "joined \"san francisco\""
+      ]
+    },
+    {
+      "id": "d8d200f45513",
+      "title": "North Maroon Descent",
+      "before": "[\"14er\",\"class\",\"4\",\"bells\"]",
+      "after": "[\"14er\",\"c4\",\"maroon bells\"]",
+      "notes": [
+        "joined \"class 4\" as \"c4\"",
+        "renamed \"bells\" -> \"maroon bells\""
+      ]
+    },
+    {
+      "id": "dcc5a3d4632d",
+      "title": "Quandary Moonset",
+      "before": "[\"14er\",\"Kyle\",\"Otis\"]",
+      "after": "[\"14er\",\"kyle\",\"otis\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "dd0135f02319",
+      "title": "Wolverine Canyon",
+      "before": "[\"desert\",\"red\",\"rocks\"]",
+      "after": "[\"desert\",\"red rocks\"]",
+      "notes": [
+        "joined \"red rocks\""
+      ]
+    },
+    {
+      "id": "de2df2dce9ff",
+      "title": "Ascending Mount Lindsey",
+      "before": "[\"Ally\",\"14er\",\"class\",\"3\"]",
+      "after": "[\"ally\",\"14er\",\"c3\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "df4d7c9f2f4f",
+      "title": "Saint Mary’s Glacier",
+      "before": "[\"alpine\",\"lake\"]",
+      "after": "[\"alpine lake\"]",
+      "notes": [
+        "joined \"alpine lake\""
+      ]
+    },
+    {
+      "id": "df9f41cc65ad",
+      "title": "Kyle on Kelso Ridge",
+      "before": "[\"Torreys\",\"class\",\"3\",\"14er\"]",
+      "after": "[\"torreys\",\"c3\",\"14er\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "e05acf7dbf78",
+      "title": "Frozen Chasm Lake",
+      "before": "[\"alpine\",\"lake\",\"longs\"]",
+      "after": "[\"alpine lake\",\"longs\"]",
+      "notes": [
+        "joined \"alpine lake\""
+      ]
+    },
+    {
+      "id": "e12b1369e6d5",
+      "title": "Looking at Mount Sopris",
+      "before": "[\"Leah\",\"carbondale\"]",
+      "after": "[\"leah\",\"carbondale\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "e426b81fa653",
+      "title": "Great Sand Dunes with Otis",
+      "before": "[\"Kyle\"]",
+      "after": "[\"kyle\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "e5390bb149a5",
+      "title": "Sunrise on the Incline",
+      "before": "[\"manitou\",\"springs\"]",
+      "after": "[\"manitou springs\"]",
+      "notes": [
+        "joined \"manitou springs\""
+      ]
+    },
+    {
+      "id": "e9df779cdc82",
+      "title": "Driving Saxon Mountain",
+      "before": "[\"offroading\",\"expo\",\"OHV\",\"car\"]",
+      "after": "[\"offroading\",\"expo\",\"ohv\",\"car\"]",
+      "notes": [
+        "lowercased"
+      ]
+    },
+    {
+      "id": "ee0e5bd5daf4",
+      "title": "Abyss Lake Sunset",
+      "before": "[\"14er\",\"class\",\"3\",\"13er\"]",
+      "after": "[\"14er\",\"c3\",\"13er\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "ef209220e693",
+      "title": "Coffeepot & Potosi Peaks",
+      "before": "[\"summit\",\"14er\",\"sneffels\",\"13ers\"]",
+      "after": "[\"summit\",\"14er\",\"sneffels\",\"13er\"]",
+      "notes": [
+        "renamed \"13ers\" -> \"13er\""
+      ]
+    },
+    {
+      "id": "ef462f14fdca",
+      "title": "Teton Wildflowers",
+      "before": "[\"flower\",\"paintbrush\",\"lupine\"]",
+      "after": "[\"flowers\",\"paintbrush\",\"lupine\"]",
+      "notes": [
+        "renamed \"flower\" -> \"flowers\""
+      ]
+    },
+    {
+      "id": "ef7418dd549b",
+      "title": "Mayflower Gulch Cabin View",
+      "before": "[\"snow\",\"cabin\",\"tenmile\",\"range\"]",
+      "after": "[\"snow\",\"cabin\",\"tenmile range\"]",
+      "notes": [
+        "joined \"tenmile range\""
+      ]
+    },
+    {
+      "id": "efe38058405d",
+      "title": "Driving into the Sangres",
+      "before": "[\"14ers\",\"road\"]",
+      "after": "[\"14er\",\"road\"]",
+      "notes": [
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "f37ed1f2d86c",
+      "title": "Kylie on Kelso Ridge",
+      "before": "[\"14er\",\"class\",\"3\"]",
+      "after": "[\"14er\",\"c3\"]",
+      "notes": [
+        "joined \"class 3\" as \"c3\""
+      ]
+    },
+    {
+      "id": "f3e5d13e231e",
+      "title": "Frozen Crater Lake",
+      "before": "[\"Kyle\",\"Otis\",\"maroon\",\"bells\"]",
+      "after": "[\"kyle\",\"otis\",\"maroon bells\"]",
+      "notes": [
+        "joined \"maroon bells\""
+      ]
+    },
+    {
+      "id": "f4ed060bbbf4",
+      "title": "The Goblins",
+      "before": "[\"desert\",\"red\",\"rocks\"]",
+      "after": "[\"desert\",\"red rocks\"]",
+      "notes": [
+        "joined \"red rocks\""
+      ]
+    },
+    {
+      "id": "f59ae6116dab",
+      "title": "Monument Valley",
+      "before": "[\"np\",\"desert\"]",
+      "after": "[\"desert\"]",
+      "notes": [
+        "removed \"np\""
+      ]
+    },
+    {
+      "id": "f9235a9bf704",
+      "title": "Blanca & Ellingwood from Lindsey",
+      "before": "[\"14ers\",\"sangres\"]",
+      "after": "[\"14er\",\"sangres\"]",
+      "notes": [
+        "renamed \"14ers\" -> \"14er\""
+      ]
+    },
+    {
+      "id": "fd79e8c70574",
+      "title": "View from Strawberry Hill",
+      "before": "[\"sf\",\"san\",\"francisco\"]",
+      "after": "[\"sf\",\"san francisco\"]",
+      "notes": [
+        "joined \"san francisco\""
+      ]
+    },
+    {
+      "id": "ffc5527a2812",
+      "title": "Torreys from Cupid",
+      "before": "[\"13er\",\"14er\",\"front\",\"range\"]",
+      "after": "[\"13er\",\"14er\",\"front range\"]",
+      "notes": [
+        "joined \"front range\""
+      ]
+    }
+  ]
+}
