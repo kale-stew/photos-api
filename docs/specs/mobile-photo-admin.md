@@ -139,6 +139,14 @@ After upload works:
 - [x] Replace a photo's image in place (`PUT /api/admin/photos/{id}/image`): keeps ID, aliases,
   links, and editorial metadata; fills only blank date/location from new EXIF; discards the old
   original and every derived object; admin URLs carry `?v=<sha256 prefix>`
+- [x] Admin list polish: working table selection with shift-click ranges, page jump, site filter,
+  recent searches, grouped filter and selection bars
+- [x] Site as a multiselect (kylies.photos, kylieis.online) on upload, edit, and bulk edit, stored
+  as the existing `climb-log` / `kylieis-online` / `both` values; public photos join the portfolio
+  only when shown on kylies.photos
+- [x] AI tag suggestions on the edit page, normalized to existing library tags, never auto-saved
+- [ ] Clean up the tag vocabulary: production tags include people's names, split multi-word tags
+  (`san`, `francisco`), and bare numbers
 - [ ] Have consumers (`climb-log`, `kylieis.online`) append `?v=<sha256 prefix>` to `/img` URLs so
   replaced images bypass year-long immutable caches
 
