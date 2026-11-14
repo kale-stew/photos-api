@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
-import { captureDate, dateInputValue, profilePhoto, UPLOAD_TYPES } from "./photo-metadata.js";
+import { captureDate, dateInputValue, profilePhoto, UPLOAD_TYPES, userComment } from "./photo-metadata.js";
 
 type Exif = Record<string, Record<string, string>>;
 
-async function jpegWithExif(exif: Exif): Promise<ArrayBuffer> {
-  const image = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#888" } })
-    .jpeg()
-    .withExif(exif)
-    .toBuffer();
+async function jpegWithExif(exif: Exif, orientation?: number): Promise<ArrayBuffer> {
+  let pipeline = sharp({ create: { width: 8, height: 8, channels: 3, background: "#888" } }).jpeg();
+  if (orientation) pipeline = pipeline.withMetadata({ orientation });
+  const image = await pipeline.withExif(exif).toBuffer();
   return image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength) as ArrayBuffer;
 }
 
@@ -48,13 +47,13 @@ test("profiles camera, capture time, and GPS from one EXIF read", async () => {
     IFD2: {
       DateTimeOriginal: "2025:12:24 18:03:25", OffsetTimeOriginal: "-10:00",
       ISOSpeedRatings: "400", FNumber: "28/10", ExposureTime: "1/250", FocalLength: "50/1",
-      ExposureBiasValue: "-1/3", LensModel: "RF 50mm", ColorSpace: "1",
+      ExposureBiasValue: "-1/3", LensModel: "RF 50mm", ColorSpace: "1", UserComment: "Summit at dusk",
     },
     IFD3: {
       GPSLatitudeRef: "N", GPSLatitude: "39/1 38/1 2400/100",
       GPSLongitudeRef: "W", GPSLongitude: "105/1 49/1 1200/100", GPSAltitude: "4000/1",
     },
-  });
+  }, 6);
 
   await inEachTimezone(async () => {
     const profile = await profilePhoto(input);
@@ -66,9 +65,10 @@ test("profiles camera, capture time, and GPS from one EXIF read", async () => {
       ["Canon", "EOS R6", "RF 50mm", "Lightroom", "Kylie", "(c) Kylie", "Sunset"],
     );
     assert.deepEqual(
-      [profile.focalLength, profile.aperture, profile.exposureTime, profile.iso, profile.colorSpace],
-      [50, 2.8, 0.004, 400, "sRGB"],
+      [profile.focalLength, profile.aperture, profile.exposureTime, profile.iso, profile.colorSpace, profile.orientation],
+      [50, 2.8, 0.004, 400, "sRGB", 6],
     );
+    assert.equal(profile.userComment, "Summit at dusk");
     assert.ok(Math.abs(profile.exposureCompensation! + 1 / 3) < 1e-9);
     assert.deepEqual([profile.latitude, profile.longitude, profile.altitude], [39.64, -105.82, 4000]);
   });
@@ -128,4 +128,29 @@ test("rejects empty, zeroed, or out-of-range EXIF dates", () => {
     assert.equal(captureDate(value), null, value);
   }
   assert.equal(captureDate("2024:02:29 10:00:00"), "2024-02-29T10:00:00");
+});
+
+test("decodes EXIF user comments by character code", () => {
+  const comment = (code: string, body: number[]) =>
+    Uint8Array.from([...code.padEnd(8, "\0")].map((c) => c.charCodeAt(0)).concat(body));
+  const ascii = [...new TextEncoder().encode("Longs Peak  ")];
+  const utf16le = [..."Péak ⛰"].flatMap((c) => [c.charCodeAt(0) & 0xff, c.charCodeAt(0) >> 8]);
+  const utf16be = [..."Péak ⛰"].flatMap((c) => [c.charCodeAt(0) >> 8, c.charCodeAt(0) & 0xff]);
+
+  assert.equal(userComment(comment("ASCII", ascii)), "Longs Peak");
+  assert.equal(userComment(comment("ASCII", [...ascii, 0, 0, 0])), "Longs Peak");
+  assert.equal(userComment(comment("", ascii)), "Longs Peak");
+  assert.equal(userComment(comment("UNICODE", utf16le)), "Péak ⛰");
+  assert.equal(userComment(comment("UNICODE", utf16be)), "Péak ⛰");
+  assert.equal(userComment(comment("JIS", [0x30, 0x42])), null);
+  assert.equal(userComment(comment("ASCII", [0, 0, 0, 0])), null);
+  assert.equal(userComment(comment("", [0x20, 0x20])), null);
+  assert.equal(userComment(new Uint8Array(4)), null);
+  assert.equal(userComment("  plain text \0"), "plain text");
+  assert.equal(userComment(undefined), null);
+});
+
+test("leaves the user comment null when the tag is missing", async () => {
+  const profile = await profilePhoto(await jpegWithExif({ IFD0: { Make: "Apple" } }));
+  assert.equal(profile?.userComment, null);
 });

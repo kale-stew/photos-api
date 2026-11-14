@@ -38,6 +38,25 @@ function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+// UserComment is bytes behind an 8-byte character code: ASCII, UNICODE
+// (UCS-2 in the file's byte order), JIS, or undefined (all zeros).
+export function userComment(value: unknown): string | null {
+  if (typeof value === "string") return text(value.replace(/\0+$/, ""));
+  if (!(value instanceof Uint8Array) || value.length <= 8) return null;
+  const code = String.fromCharCode(...value.subarray(0, 8)).replace(/\0+$/, "");
+  const body = value.subarray(8);
+  let decoded: string;
+  if (code === "UNICODE") {
+    const bigEndian = body.length > 1 && body[0] === 0 && body[1] !== 0;
+    decoded = new TextDecoder(bigEndian ? "utf-16be" : "utf-16le").decode(body);
+  } else if (code === "ASCII" || code === "") {
+    decoded = new TextDecoder("utf-8").decode(body);
+  } else {
+    return null;
+  }
+  return text(decoded.replace(/\0[\s\S]*$/, ""));
+}
+
 const EXIF_DATE = /^(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/;
 const EXIF_OFFSET = /^([+-])(\d{2}):?(\d{2})$/;
 
@@ -62,6 +81,8 @@ export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | n
   try {
     // reviveValues: false keeps EXIF dates as raw text; exifr would otherwise
     // build Dates in the runtime's timezone. No other picked tag is revived.
+    // translateValues: false keeps Orientation numeric; of the picked tags,
+    // only Orientation has a translation table.
     const metadata = await exifr.parse(input, {
       pick: [
         "Make", "Model", "LensModel", "FocalLength", "FNumber", "ExposureTime",
@@ -72,6 +93,7 @@ export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | n
         "ImageDescription", "UserComment", "Artist", "Copyright",
       ],
       reviveValues: false,
+      translateValues: false,
     });
     if (!metadata || typeof metadata !== "object") return null;
 
@@ -93,7 +115,7 @@ export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | n
       orientation: number(metadata.Orientation),
       colorSpace: text(metadata.ColorSpace) ?? (number(metadata.ColorSpace) === 1 ? "sRGB" : null),
       imageDescription: text(metadata.ImageDescription),
-      userComment: text(metadata.UserComment),
+      userComment: userComment(metadata.userComment ?? metadata.UserComment),
       artist: text(metadata.Artist),
       copyright: text(metadata.Copyright),
     };
