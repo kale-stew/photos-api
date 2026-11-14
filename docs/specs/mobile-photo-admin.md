@@ -136,6 +136,11 @@ After upload works:
 - [ ] Delete duplicate `climb-log` D1/R2 photo storage after the soak (runbook in
   `climb-log/docs/specs/photos-api-consumer.md`, earliest 2026-10-23)
 - [x] Add `format=jpeg` transforms for consumers that cannot decode WebP (blog OG images)
+- [x] Replace a photo's image in place (`PUT /api/admin/photos/{id}/image`): keeps ID, aliases,
+  links, and editorial metadata; fills only blank date/location from new EXIF; discards the old
+  original and every derived object; admin URLs carry `?v=<sha256 prefix>`
+- [ ] Have consumers (`climb-log`, `kylieis.online`) append `?v=<sha256 prefix>` to `/img` URLs so
+  replaced images bypass year-long immutable caches
 
 ## Acceptance Checks
 
