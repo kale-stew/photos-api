@@ -15,7 +15,7 @@
     "db:seed:local": "wrangler d1 execute photos-db --local --file=scripts/seed-test-data.sql",
     "test": "npx tsx scripts/test-integration.ts",
     "test:local": "API_URL=http://localhost:8787 npx tsx scripts/test-integration.ts",
-    "test:metadata": "npx tsx --test src/photo-metadata.test.ts src/location-matcher.test.ts src/publication.test.ts src/transform-source.test.ts",
+    "test:metadata": "npx tsx --test src/photo-metadata.test.ts src/location-matcher.test.ts src/publication.test.ts src/transform-source.test.ts src/replace-image.test.ts",
     "test:transform-sources": "npx tsx --test scripts/migrate/backfill-transform-sources.test.ts",
     "transform-sources:plan": "npx tsx scripts/migrate/backfill-transform-sources.ts",
     "transform-sources:apply": "npx tsx scripts/migrate/backfill-transform-sources.ts --apply",

@@ -12,6 +12,7 @@
  *   GET /admin                     - Photo grid
  *   GET /admin/photos/{id}         - Photo detail view
  *   PATCH /api/admin/photos/{id}   - Edit photo metadata
+ *   PUT /api/admin/photos/{id}/image - Replace the image file in place
  *   POST /api/admin/photos/{id}/caption-suggestion - Suggest a reviewed caption
  *   DELETE /api/admin/photos/{id}  - Validate deletion eligibility; never deletes directly
  *   POST /api/admin/resize         - Custom resize
@@ -32,6 +33,7 @@ import {
   transformInputs,
   transformSourceKey,
 } from "./transform-source";
+import { imageVersion, staleObjectKeys, versionedImagePath } from "./replace-image";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -361,6 +363,9 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
           width: 100%;
           display: block;
         }
+        .replace-panel { margin-top: var(--space-lg); }
+        .replace-panel p { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 var(--space-md); }
+        .replace-form { display: grid; gap: var(--space-sm); }
         
         .detail-sidebar {
           position: sticky;
@@ -1102,7 +1107,7 @@ app.get("/admin/", async (c) => {
             <tbody>
               {photos.map((photo) => <tr data-photo-row={photo.id}>
                 <td><input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} /></td>
-                <td><a href={`/admin/photos/${photo.id}`}><img src={`${origin}/img/${photo.id}?w=200`} alt={photo.title || "photo"} loading="lazy" /></a></td>
+                <td><a href={`/admin/photos/${photo.id}`}><img src={`${origin}${versionedImagePath(photo.id, imageVersion(photo), 200)}`} alt={photo.title || "photo"} loading="lazy" /></a></td>
                 <td><a href={`/admin/photos/${photo.id}`}>{photo.id}</a></td>
                 <td>{photo.title || "—"}</td><td>{photo.caption || "—"}</td><td>{photo.location || "—"}</td><td>{photo.date || "—"}</td><td>{photo.tags || "—"}</td><td>{photo.site || "—"}</td><td>{photo.source || "—"}</td><td>{photo.width && photo.height ? `${photo.width}×${photo.height}` : "—"}</td><td>{photo.exclude ? "yes" : "no"}</td><td>{photo.visibility}</td><td>{photo.status}</td>
               </tr>)}
@@ -1113,7 +1118,7 @@ app.get("/admin/", async (c) => {
         photos.length === 0 ? <div class="empty-state"><h2>no photos found</h2><p>upload some photos to get started</p></div> : <div class="photo-grid">
           {photos.map((photo) => <article class="photo-card" key={photo.id} data-photo-id={photo.id}>
             <input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} />
-            <a href={`/admin/photos/${photo.id}`}><img src={`${origin}/img/${photo.id}?w=200`} alt={photo.title || "photo"} loading="lazy" /></a>
+            <a href={`/admin/photos/${photo.id}`}><img src={`${origin}${versionedImagePath(photo.id, imageVersion(photo), 200)}`} alt={photo.title || "photo"} loading="lazy" /></a>
             <div class="photo-card-info"><a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a><div class="photo-card-meta">{photo.date || "no date"}{photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}</div><div class="photo-card-tags"><span class="tag">{photo.site}</span><span class="tag">{photo.visibility}</span><span class="tag">{photo.status}</span></div></div>
             <div class="photo-card-actions"><a href={`/admin/photos/${photo.id}`}>edit</a><button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button></div>
           </article>)}
@@ -1363,6 +1368,7 @@ app.get("/admin/photos/:id", async (c) => {
 
   const origin = new URL(c.req.url).origin;
   const standardWidths = [200, 400, 800, 1600];
+  const version = imageVersion(photo);
 
   return c.html(
     <AdminLayout title={photo.title || "untitled photo"}>
@@ -1372,9 +1378,49 @@ app.get("/admin/photos/:id", async (c) => {
         <div>
           <div class="detail-image">
             <img
-              src={`${origin}/img/${photo.id}`}
+              src={`${origin}${versionedImagePath(photo.id, version)}`}
               alt={photo.title || "photo"}
             />
+          </div>
+          <div class="detail-panel replace-panel">
+            <h2>replace image</h2>
+            <p>
+              Swap in a new file. The ID, aliases, and links stay the same. Title, caption, and tags are kept;
+              date and location are filled from the new file only if they're blank. The current original is
+              discarded, and browsers that already loaded this photo may show the old version until their cache expires.
+            </p>
+            <form id="replace-form" class="replace-form" enctype="multipart/form-data">
+              <input id="replace-file" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" required />
+              <button class="edit-submit" type="submit">replace image</button>
+              <div id="replace-status" class="edit-status" aria-live="polite"></div>
+            </form>
+            <script dangerouslySetInnerHTML={{ __html: `
+              document.getElementById('replace-form').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const file = document.getElementById('replace-file').files?.[0];
+                if (!file) return;
+                if (!confirm('Replace this photo with ' + file.name + '? The current original will be discarded.')) return;
+                const button = event.currentTarget.querySelector('button');
+                const status = document.getElementById('replace-status');
+                button.disabled = true;
+                status.classList.remove('saved');
+                status.textContent = 'uploading ' + file.name + '…';
+                const data = new FormData();
+                data.set('image', file);
+                try {
+                  const response = await fetch('/api/admin/photos/${photo.id}/image', { method: 'PUT', body: data });
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || 'replace failed');
+                  status.textContent = result.unchanged ? 'That file is already this photo’s image' : 'Replaced — reloading';
+                  status.classList.add('saved');
+                  if (!result.unchanged) setTimeout(() => location.reload(), 600);
+                } catch (error) {
+                  status.textContent = error instanceof Error ? error.message : 'replace failed';
+                } finally {
+                  button.disabled = false;
+                }
+              });
+            `}} />
           </div>
         </div>
 
@@ -1596,14 +1642,14 @@ app.get("/admin/photos/:id", async (c) => {
               {standardWidths.map((w) => (
                 <div class="size-item" key={w}>
                   <img
-                    src={`${origin}/img/${photo.id}?w=${w}`}
+                    src={`${origin}${versionedImagePath(photo.id, version, w)}`}
                     alt={`${w}px`}
                     loading="lazy"
                   />
                   <code>{w}px</code>
                   <button
                     type="button"
-                    onclick={`navigator.clipboard.writeText('${origin}/img/${photo.id}?w=${w}'); this.textContent='copied!'; setTimeout(() => this.textContent='copy url', 1000);`}
+                    onclick={`navigator.clipboard.writeText('${origin}${versionedImagePath(photo.id, version, w)}'); this.textContent='copied!'; setTimeout(() => this.textContent='copy url', 1000);`}
                   >
                     copy url
                   </button>
@@ -1617,7 +1663,7 @@ app.get("/admin/photos/:id", async (c) => {
             <div class="size-item">
               <button
                 type="button"
-                onclick={`navigator.clipboard.writeText('${origin}/img/${photo.id}'); this.textContent='copied!'; setTimeout(() => this.textContent='copy original url', 1000);`}
+                onclick={`navigator.clipboard.writeText('${origin}${versionedImagePath(photo.id, version)}'); this.textContent='copied!'; setTimeout(() => this.textContent='copy original url', 1000);`}
               >
                 copy original url
               </button>
@@ -2067,24 +2113,7 @@ app.post("/api/admin/upload", async (c) => {
         .bind(id, publication.collection)
         .run();
     }
-    if (profile) {
-      await c.env.DB.prepare(`
-        INSERT INTO photo_exif (
-          photo_id, make, model, lens_model, focal_length, aperture,
-          exposure_time, iso, exposure_compensation, date_taken,
-          gps_latitude, gps_longitude, gps_altitude, software,
-          orientation, color_space
-          , image_description, artist, copyright
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        id, profile.make, profile.model, profile.lensModel, profile.focalLength,
-        profile.aperture, profile.exposureTime, profile.iso,
-        profile.exposureCompensation, profile.dateTaken, profile.latitude,
-        profile.longitude, profile.altitude, profile.software,
-        profile.orientation, profile.colorSpace, profile.imageDescription,
-        profile.artist, profile.copyright
-      ).run();
-    }
+    if (profile) await exifStatement(c.env.DB, id, profile).run();
     if (climbId) await setPrimaryClimb(c.env.DB, id, climbId);
   } catch (error) {
     // Clean up R2 if DB insert fails
@@ -2107,6 +2136,168 @@ app.post("/api/admin/upload", async (c) => {
     duplicate: false,
     destination,
     climbId,
+    profile,
+  });
+});
+
+function exifStatement(db: D1Database, id: string, profile: PhotoProfile): D1PreparedStatement {
+  return db.prepare(`
+    INSERT INTO photo_exif (
+      photo_id, make, model, lens_model, focal_length, aperture,
+      exposure_time, iso, exposure_compensation, date_taken,
+      gps_latitude, gps_longitude, gps_altitude, software,
+      orientation, color_space
+      , image_description, artist, copyright
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    id, profile.make, profile.model, profile.lensModel, profile.focalLength,
+    profile.aperture, profile.exposureTime, profile.iso,
+    profile.exposureCompensation, profile.dateTaken, profile.latitude,
+    profile.longitude, profile.altitude, profile.software,
+    profile.orientation, profile.colorSpace, profile.imageDescription,
+    profile.artist, profile.copyright
+  );
+}
+
+async function deleteStaleObjects(bucket: R2Bucket, r2Key: string, keepKey: string): Promise<number> {
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix: `${r2Key}/`, cursor });
+    keys.push(...listed.objects.map((object) => object.key));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  const stale = staleObjectKeys(keys, r2Key, keepKey);
+  for (let index = 0; index < stale.length; index += 1000) {
+    await bucket.delete(stale.slice(index, index + 1000));
+  }
+  const remaining = await bucket.list({ prefix: `${r2Key}/` });
+  if (staleObjectKeys(remaining.objects.map((object) => object.key), r2Key, keepKey).length > 0) {
+    throw new Error("stale objects remain after deletion");
+  }
+  return stale.length;
+}
+
+// PUT /api/admin/photos/{id}/image - Replace the image file, keeping the photo's identity
+app.put("/api/admin/photos/:id/image", async (c) => {
+  const id = c.req.param("id");
+  const photo = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?").bind(id).first<Photo>();
+  if (!photo) return c.json({ error: "Photo not found" }, 404);
+
+  const formData = await c.req.formData().catch(() => null);
+  const file = formData?.get("image");
+  if (!(file instanceof File)) return c.json({ error: "image file required" }, 400);
+  if (!Object.hasOwn(UPLOAD_TYPES, file.type)) {
+    return c.json({ error: "Only JPEG, PNG, WebP, HEIC, or HEIF allowed" }, 400);
+  }
+  if (exceedsImagesInputLimit(file.size)) {
+    return c.json({
+      error: `File too large (max ${IMAGES_INPUT_LIMIT_BYTES / 1_000_000} MB). Import larger originals with the local importer.`,
+    }, 400);
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBytes = await crypto.subtle.digest("SHA-256", arrayBuffer);
+  const sha256 = Array.from(new Uint8Array(hashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const format = UPLOAD_TYPES[file.type];
+  const newOriginalKey = originalKey(photo.r2_key, format);
+
+  // Same bytes as the current image: nothing to replace, but finish any cleanup
+  // a previous attempt left behind so retrying is always safe.
+  if (sha256 === photo.sha256 && format === photo.format) {
+    try {
+      await deleteStaleObjects(c.env.PHOTOS_BUCKET, photo.r2_key, newOriginalKey);
+    } catch {
+      return c.json({ error: "Image is unchanged, but leftover objects could not be cleaned up; retry" }, 502);
+    }
+    return c.json({ id, unchanged: true, version: imageVersion(photo) });
+  }
+
+  const duplicate = await c.env.DB.prepare("SELECT id FROM photos WHERE sha256 = ? AND id != ? LIMIT 1")
+    .bind(sha256, id)
+    .first<{ id: string }>();
+  if (duplicate) {
+    return c.json({ error: `This file already belongs to photo ${duplicate.id}`, duplicateId: duplicate.id }, 409);
+  }
+
+  const profile = await profilePhoto(arrayBuffer);
+  let width: number | null = null;
+  let height: number | null = null;
+  try {
+    const info = await c.env.IMAGES.info(file.stream() as ReadableStream<Uint8Array>);
+    if ("width" in info && "height" in info) {
+      width = info.width || null;
+      height = info.height || null;
+    }
+  } catch {
+    // Dimensions extraction failed, leave as null
+  }
+  const exifDate = dateInputValue(profile?.dateTaken ?? null);
+  const exifLocation = photo.location?.trim()
+    ? null
+    : await locationFromExistingPhotos(c.env.DB, profile?.latitude, profile?.longitude, file.name);
+
+  try {
+    await c.env.PHOTOS_BUCKET.put(newOriginalKey, arrayBuffer, { httpMetadata: { contentType: file.type } });
+  } catch {
+    return c.json({ error: "Could not store the new image; the current image is unchanged" }, 502);
+  }
+
+  // Values derived from the old bytes (blurhash, accent color, the migration
+  // source URL used as a transform repair input) no longer describe the image.
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        UPDATE photos SET
+          format = ?, width = ?, height = ?, size_bytes = ?, sha256 = ?,
+          blurhash = NULL, accent_color = NULL, source_url = NULL,
+          date = CASE WHEN date IS NULL OR trim(date) = '' THEN ? ELSE date END,
+          location = CASE WHEN location IS NULL OR trim(location) = '' THEN ? ELSE location END,
+          updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(format, width, height, file.size, sha256, exifDate, exifLocation, id),
+      c.env.DB.prepare("DELETE FROM photo_exif WHERE photo_id = ?").bind(id),
+      ...(profile ? [exifStatement(c.env.DB, id, profile)] : []),
+    ]);
+  } catch (error) {
+    console.error("Failed to record replaced image:", error);
+    // A different format wrote to a new key, so the old image is still intact.
+    if (format !== photo.format) {
+      await c.env.PHOTOS_BUCKET.delete(newOriginalKey).catch(() => {});
+      return c.json({ error: "Metadata update failed; the current image is unchanged" }, 500);
+    }
+    return c.json({ error: "New image stored but metadata update failed; retry with the same file" }, 500);
+  }
+
+  let removed: number;
+  try {
+    removed = await deleteStaleObjects(c.env.PHOTOS_BUCKET, photo.r2_key, newOriginalKey);
+  } catch (error) {
+    console.error("Failed to remove stale objects after replace:", error);
+    return c.json({ error: "Image replaced, but old previews could not be removed; retry with the same file", id }, 502);
+  }
+
+  const updated = await c.env.DB.prepare("SELECT * FROM photos WHERE id = ?").bind(id).first<Photo>();
+  if (!updated) return c.json({ error: "Photo metadata missing after replace" }, 500);
+  const version = imageVersion(updated);
+  const origin = new URL(c.req.url).origin;
+  const preview = updated.status === "active"
+    ? await getOrCreateTransform(c.env, c.executionCtx, updated, 800, `${updated.r2_key}/w800.webp`)
+    : null;
+
+  return c.json({
+    id,
+    unchanged: false,
+    version,
+    url: `${origin}${versionedImagePath(id, version)}`,
+    previewUrl: `${origin}${versionedImagePath(id, version, 800)}`,
+    previewReady: Boolean(preview),
+    width,
+    height,
+    format,
+    sizeBytes: file.size,
+    removedObjects: removed,
     profile,
   });
 });
@@ -2211,7 +2402,13 @@ async function getOrCreateTransform(
         httpMetadata: { contentType },
       });
 
-      if (!(await isPhotoActive(env.DB, photo.id))) {
+      // A replace can swap the original while this transform runs; drop output
+      // rendered from bytes that are no longer the photo's original.
+      const [stillActive, currentOriginal] = await Promise.all([
+        isPhotoActive(env.DB, photo.id),
+        env.PHOTOS_BUCKET.head(original.key),
+      ]);
+      if (!stillActive || currentOriginal?.etag !== original.etag) {
         await env.PHOTOS_BUCKET.delete(targetKey);
         return null;
       }
@@ -2271,6 +2468,15 @@ function getOpenApiSpec(baseUrl: string): object {
               required: false,
               schema: { type: "string", enum: ["webp", "jpeg"], default: "webp" },
               description: "Output format for resized images. Use jpeg for consumers that cannot decode WebP.",
+            },
+            {
+              name: "v",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description:
+                "Cache-busting version, ignored by the server. Responses are cached as immutable for a year, and a photo's image can be replaced in place, so pass the first 12 characters of the photo's sha256 to get a URL that changes when the image does.",
+              example: "a1b2c3d4e5f6",
             },
           ],
           responses: {
