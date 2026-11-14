@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { dateInputValue, profilePhoto, type PhotoProfile } from "../../src/photo-metadata.js";
+import { dateInputValue, PROFILE_VERSION, profilePhoto, type PhotoProfile } from "../../src/photo-metadata.js";
 
 interface ImportPhoto {
   id: string;
@@ -66,6 +66,7 @@ for (const photo of manifest.photos.filter(({ sourceKind }) => sourceKind === "d
 
 const output = {
   version: 1,
+  profileVersion: PROFILE_VERSION,
   generatedAt: new Date().toISOString(),
   summary: {
     desktopPhotos: manifest.photos.filter(({ sourceKind }) => sourceKind === "desktop").length,

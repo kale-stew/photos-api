@@ -77,6 +77,10 @@ export function captureDate(value: unknown, offset?: unknown): string | null {
   return `${year}-${month}-${day}T${hour}:${minute}:${second}${validZone ? `${zone[1]}${zone[2]}:${zone[3]}` : ""}`;
 }
 
+// Bump whenever profilePhoto output changes so stale EXIF manifests are refused.
+// 2: capture time keeps its offset; orientation and user comments are read.
+export const PROFILE_VERSION = 2;
+
 export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | null> {
   try {
     // reviveValues: false keeps EXIF dates as raw text; exifr would otherwise
