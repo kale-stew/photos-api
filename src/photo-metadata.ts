@@ -38,22 +38,41 @@ function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function captureDate(value: unknown): string | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
-  return text(value)?.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3") ?? null;
+const EXIF_DATE = /^(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/;
+const EXIF_OFFSET = /^([+-])(\d{2}):?(\d{2})$/;
+
+function validDate(year: number, month: number, day: number, hour: number, minute: number, second: number): boolean {
+  if (year < 1 || month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59 || second > 59) return false;
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+// EXIF stores capture time as local wall-clock text plus an optional offset.
+// Keep both as written so the result never depends on the runtime's timezone.
+export function captureDate(value: unknown, offset?: unknown): string | null {
+  const match = text(value)?.match(EXIF_DATE);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second] = match;
+  if (!validDate(+year, +month, +day, +hour, +minute, +second)) return null;
+  const zone = text(offset)?.match(EXIF_OFFSET);
+  const validZone = zone && +zone[2] <= 14 && +zone[3] <= 59;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}${validZone ? `${zone[1]}${zone[2]}:${zone[3]}` : ""}`;
 }
 
 export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | null> {
   try {
-    const [metadata, gps] = await Promise.all([
-      exifr.parse(input, [
+    // reviveValues: false keeps EXIF dates as raw text; exifr would otherwise
+    // build Dates in the runtime's timezone. No other picked tag is revived.
+    const metadata = await exifr.parse(input, {
+      pick: [
         "Make", "Model", "LensModel", "FocalLength", "FNumber", "ExposureTime",
-        "ISO", "ExposureCompensation", "DateTimeOriginal", "CreateDate",
-        "GPSAltitude", "Software", "Orientation", "ColorSpace",
+        "ISO", "ExposureCompensation",
+        "DateTimeOriginal", "OffsetTimeOriginal", "CreateDate", "OffsetTimeDigitized", "OffsetTime",
+        "GPSLatitude", "GPSLatitudeRef", "GPSLongitude", "GPSLongitudeRef", "GPSAltitude",
+        "Software", "Orientation", "ColorSpace",
         "ImageDescription", "UserComment", "Artist", "Copyright",
-      ]),
-      exifr.gps(input).catch(() => null),
-    ]);
+      ],
+      reviveValues: false,
+    });
     if (!metadata || typeof metadata !== "object") return null;
 
     return {
@@ -65,9 +84,10 @@ export async function profilePhoto(input: ArrayBuffer): Promise<PhotoProfile | n
       exposureTime: number(metadata.ExposureTime),
       iso: number(metadata.ISO),
       exposureCompensation: number(metadata.ExposureCompensation),
-      dateTaken: captureDate(metadata.DateTimeOriginal ?? metadata.CreateDate),
-      latitude: number(gps?.latitude),
-      longitude: number(gps?.longitude),
+      dateTaken: captureDate(metadata.DateTimeOriginal, metadata.OffsetTimeOriginal ?? metadata.OffsetTime)
+        ?? captureDate(metadata.CreateDate, metadata.OffsetTimeDigitized ?? metadata.OffsetTime),
+      latitude: number(metadata.latitude),
+      longitude: number(metadata.longitude),
       altitude: number(metadata.GPSAltitude),
       software: text(metadata.Software),
       orientation: number(metadata.Orientation),
