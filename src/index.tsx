@@ -37,9 +37,8 @@ import {
 import { imageVersion, staleObjectKeys, versionedImagePath } from "./replace-image";
 import { isSiteCode, parseSite, SITES, siteLabel, sitesForValue } from "./sites";
 import { MAX_TAG_SUGGESTIONS, parseTags, parseTagSuggestions } from "./tag-suggestions";
-import { serveGearImage } from "./gear-assets";
-
-export { GearAssets } from "./gear-assets";
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { type GearImageItem, type GearImageSyncOptions, serveGearImage, syncGearImages } from "./gear-assets";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -3008,6 +3007,13 @@ function getOpenApiSpec(baseUrl: string): object {
       { name: "People", description: "Approved public subject groupings" },
     ],
   };
+}
+
+/** RPC entrypoint for climb-log's Notion sync. Only reachable through a service binding. */
+export class GearAssets extends WorkerEntrypoint<Env> {
+  async syncGearImages(items: GearImageItem[], options?: GearImageSyncOptions) {
+    return syncGearImages(this.env, items, options);
+  }
 }
 
 export default app;

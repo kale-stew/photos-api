@@ -7,7 +7,6 @@
  * assets never touch the photo tables, aliases, collections, or slugs.
  */
 
-import { WorkerEntrypoint } from "cloudflare:workers";
 import { convertIndexedToRgb, decode as decodePng, encode as encodePng } from "fast-png";
 import {
   centerOnFrame,
@@ -36,6 +35,7 @@ import {
 
 export type GearImageStatus = "ready" | "needs_review" | "missing" | "unsupported" | "pending" | "failed";
 
+// The RPC contract is mirrored in climb-log `src/lib/gear-images.ts`; keep them in step.
 export interface GearImageItem {
   id: string;
   url: string | null;
@@ -51,6 +51,12 @@ export interface GearImageResult {
 export interface GearImageSyncOptions {
   maxProcess?: number;
   dryRun?: boolean;
+}
+
+/** Seams for unit tests; production uses the defaults. */
+export interface GearAssetDeps {
+  fetch: typeof fetch;
+  normalize: typeof normalizeGearImage;
 }
 
 interface GearAssetRow {
@@ -192,26 +198,56 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function ingestOne(env: Env, item: { id: string; url: string }, existing: GearAssetRow | null): Promise<GearImageResult> {
-  const response = await fetch(item.url, { redirect: "manual", headers: { Accept: "image/*" } });
-  if (response.status !== 200) {
+/**
+ * Fetch a Notion-hosted file. `file.notion.so` answers with a redirect to S3,
+ * so follow at most one hop, and only to another allowlisted host.
+ */
+async function fetchSource(url: string, fetcher: typeof fetch): Promise<Response> {
+  let target = url;
+  for (let hop = 0; hop < 2; hop++) {
+    const response = await fetcher(target, { redirect: "manual", headers: { Accept: "image/*" } });
+    if (response.status === 200) return response;
     await response.body?.cancel();
+    const location = response.headers.get("Location");
+    if (hop === 0 && response.status >= 300 && response.status < 400 && location) {
+      const next = new URL(location, target).toString();
+      if (!isAllowedSourceUrl(next)) throw new Error("source redirected to a host that is not allowed");
+      target = next;
+      continue;
+    }
     throw new Error(`source returned ${response.status}`);
   }
+  throw new Error("source redirected more than once");
+}
+
+async function ingestOne(
+  env: Env,
+  item: { id: string; url: string },
+  existing: GearAssetRow | null,
+  deps: GearAssetDeps,
+): Promise<GearImageResult> {
+  const response = await fetchSource(item.url, deps.fetch);
   const source = await readCapped(response, GEAR_MAX_SOURCE_BYTES);
   const sourceSha256 = await sha256Hex(source);
   const version = await gearAssetVersion(sourceSha256);
   const prefix = gearPrefix(item.id, version);
 
-  if (existing && existing.version === version) {
+  if (existing && existing.version === version && (await env.PHOTOS_BUCKET.head(`${prefix}/master.png`))) {
     // Same bytes re-uploaded under a new Notion file: just record the new key.
-    await env.DB.prepare("UPDATE gear_assets SET source_key = ?, updated_at = datetime('now') WHERE notion_page_id = ?")
-      .bind(sourceKey(item.url), item.id)
+    await env.DB.prepare(
+      "UPDATE gear_assets SET source_key = ?, pipeline_version = ?, updated_at = datetime('now') WHERE notion_page_id = ?",
+    )
+      .bind(sourceKey(item.url), GEAR_PIPELINE_VERSION, item.id)
       .run();
     return { id: item.id, status: existing.status, version };
   }
 
-  const normalized = await normalizeGearImage(env.IMAGES, source);
+  const normalized = await deps.normalize(env.IMAGES, source);
+  // Track the prefix before writing to it, so a failed D1 batch below leaves a
+  // retired row that cleanup can find. The batch removes it on success.
+  await env.DB.prepare("INSERT OR IGNORE INTO gear_asset_retired_prefixes (r2_prefix, notion_page_id) VALUES (?, ?)")
+    .bind(prefix, item.id)
+    .run();
   await env.PHOTOS_BUCKET.put(`${prefix}/master.png`, normalized.master, {
     httpMetadata: { contentType: "image/png" },
   });
@@ -265,8 +301,15 @@ export async function cleanupRetiredGearPrefixes(env: Env, limit = MAX_CLEANUP_P
     LIMIT ?
   `).bind(`-${RETIRED_GRACE_DAYS} days`, limit).all<{ r2_prefix: string }>();
   let cleaned = 0;
+  const isCurrent = async (prefix: string) =>
+    (await env.DB.prepare("SELECT 1 AS current FROM gear_assets WHERE r2_prefix = ?").bind(prefix).first()) !== null;
   for (const { r2_prefix } of due.results ?? []) {
     try {
+      // A concurrent sync can re-adopt this prefix after it was selected.
+      if (await isCurrent(r2_prefix)) {
+        await env.DB.prepare("DELETE FROM gear_asset_retired_prefixes WHERE r2_prefix = ?").bind(r2_prefix).run();
+        continue;
+      }
       const listPrefix = `${r2_prefix}/`;
       const keys: string[] = [];
       let cursor: string | undefined;
@@ -278,6 +321,10 @@ export async function cleanupRetiredGearPrefixes(env: Env, limit = MAX_CLEANUP_P
       if (keys.length > 0) await env.PHOTOS_BUCKET.delete(keys);
       const remaining = await env.PHOTOS_BUCKET.list({ prefix: listPrefix, limit: 1 });
       if (remaining.objects.length > 0) throw new Error("objects remain after delete");
+      if (await isCurrent(r2_prefix)) {
+        // Re-adopted while deleting: force the next sync to rebuild it.
+        await env.DB.prepare("UPDATE gear_assets SET pipeline_version = 0 WHERE r2_prefix = ?").bind(r2_prefix).run();
+      }
       await env.DB.prepare("DELETE FROM gear_asset_retired_prefixes WHERE r2_prefix = ?").bind(r2_prefix).run();
       cleaned++;
     } catch (error) {
@@ -291,11 +338,16 @@ export async function syncGearImages(
   env: Env,
   items: GearImageItem[],
   options: GearImageSyncOptions = {},
+  deps: GearAssetDeps = { fetch: (input, init) => fetch(input, init), normalize: normalizeGearImage },
 ): Promise<{ results: GearImageResult[]; cleaned: number }> {
   if (!Array.isArray(items) || items.length > MAX_ITEMS) throw new Error(`items must be an array of at most ${MAX_ITEMS}`);
   const maxProcess = Math.max(0, Math.min(options.maxProcess ?? DEFAULT_MAX_PROCESS, 50));
   const results: GearImageResult[] = [];
   let processed = 0;
+  const rows = await env.DB.prepare(
+    "SELECT notion_page_id, source_key, pipeline_version, version, r2_prefix, status FROM gear_assets",
+  ).all<GearAssetRow>();
+  const existingById = new Map((rows.results ?? []).map((row) => [row.notion_page_id, row]));
 
   for (const item of items) {
     const id = item?.id;
@@ -312,7 +364,7 @@ export async function syncGearImages(
       continue;
     }
     try {
-      const existing = await currentAsset(env.DB, id);
+      const existing = existingById.get(id) ?? null;
       if (existing && existing.source_key === sourceKey(item.url) && existing.pipeline_version === GEAR_PIPELINE_VERSION) {
         results.push({ id, status: existing.status, version: existing.version });
         continue;
@@ -322,7 +374,7 @@ export async function syncGearImages(
         continue;
       }
       processed++;
-      results.push(await ingestOne(env, { id, url: item.url }, existing));
+      results.push(await ingestOne(env, { id, url: item.url }, existing, deps));
     } catch (error) {
       console.error(JSON.stringify({ event: "gear_image_failed", id, error: errorMessage(error) }));
       results.push({ id, status: "failed", error: errorMessage(error).slice(0, 200) });
@@ -331,13 +383,6 @@ export async function syncGearImages(
 
   const cleaned = options.dryRun ? 0 : await cleanupRetiredGearPrefixes(env);
   return { results, cleaned };
-}
-
-/** RPC entrypoint for climb-log's Notion sync. Only reachable through a service binding. */
-export class GearAssets extends WorkerEntrypoint<Env> {
-  async syncGearImages(items: GearImageItem[], options?: GearImageSyncOptions) {
-    return syncGearImages(this.env, items, options);
-  }
 }
 
 async function getOrCreateGearTransform(
