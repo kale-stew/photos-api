@@ -42,6 +42,14 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 - Quarantine metadata before deleting objects. For final deletion, inventory the complete prefix, delete and verify R2 objects, then remove D1 metadata.
 - Never suppress an R2 deletion failure or delete D1 first; the metadata is required to retry cleanup safely.
 
+## Gear Assets
+
+- Gear product images live in `gear_assets` and under `gear/{notionPageId}/{version}/` in `photos-bucket`, never in `photos`, aliases, or collections. Logic is in `src/gear-assets.ts` (Worker) and `src/gear-image.ts` (pure, unit tested).
+- climb-log's nightly Notion sync is the only writer, through the `GearAssets` RPC entrypoint over a service binding. There is no HTTP write route.
+- Ingest normalizes once: background removal only for opaque sources, a JS crop to the alpha bounding box, then a fit into a transparent 800×800 frame with 6% padding. Bump `GEAR_PIPELINE_VERSION` to reprocess everything on the next syncs.
+- The local Images binding ignores `trim` and cannot run `segment` or raw `rgba` output, so the pipeline crops in JS and segmentation falls back to `needs_review` locally.
+- Superseded versions go to `gear_asset_retired_prefixes` and are deleted after 7 days, R2 first and verified, then the row. Old version URLs 302 to the current one.
+
 ## Visibility And References
 
 - Do not treat legacy `exclude` as proof that an image is unused. It historically means hidden from gallery listings, and excluded images may still appear in published content.
