@@ -3,6 +3,7 @@
  *
  * Public Endpoints:
  *   GET /img/{photo-id}?w={width}  - Serve photo with optional resize
+ *   GET /gear/{page-id}/{version}.webp?w={width} - Serve a normalized gear image
  *   GET /api/photos                - List photos (with filters)
  *   GET /api/photos/{id}           - Get single photo metadata
  *   GET /docs                      - Swagger UI
@@ -36,6 +37,9 @@ import {
 import { imageVersion, staleObjectKeys, versionedImagePath } from "./replace-image";
 import { isSiteCode, parseSite, SITES, siteLabel, sitesForValue } from "./sites";
 import { MAX_TAG_SUGGESTIONS, parseTags, parseTagSuggestions } from "./tag-suggestions";
+import { serveGearImage } from "./gear-assets";
+
+export { GearAssets } from "./gear-assets";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -942,6 +946,12 @@ app.get("/img/:photoId", async (c) => {
       "ETag": object.etag,
     },
   });
+});
+
+// GET /gear/{page-id}/{version}.{webp|png} - gear images synced from Notion
+app.get("/gear/:id{[0-9a-f-]{36}}/:file{[0-9a-f]{12}\\.(?:webp|png)}", async (c) => {
+  const [version, ext] = c.req.param("file").split(".");
+  return serveGearImage(c.env, c.req.param("id"), version, ext, c.req.query("w"));
 });
 
 const MONTH_NAMES = [
