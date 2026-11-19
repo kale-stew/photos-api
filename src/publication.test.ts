@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PUBLICATIONS, publicationForVisibility } from "./publication.js";
+import { PUBLICATIONS, publicCollection, publicationForVisibility } from "./publication.js";
+
+test("hidden public photos stay out of the portfolio", () => {
+  assert.equal(publicCollection("climb-log", 0), "portfolio");
+  assert.equal(publicCollection("both", 1), null);
+  assert.equal(publicCollection("kylieis-online", 0), null);
+});
 
 test("making a photo public lists it in the portfolio", () => {
   assert.deepEqual(publicationForVisibility("public", "both"), PUBLICATIONS.portfolio);

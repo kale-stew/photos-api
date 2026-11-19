@@ -25,7 +25,7 @@ import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
 import { matchExistingLocation, matchExistingLocationText } from "./location-matcher";
-import { collectionStatements, PUBLICATIONS, publicationForVisibility, type PublicationAction, type Visibility } from "./publication";
+import { collectionStatements, PUBLICATIONS, publicCollection, publicationForVisibility, type PublicationAction, type Visibility } from "./publication";
 import {
   exceedsImagesInputLimit,
   IMAGES_INPUT_LIMIT_BYTES,
@@ -39,6 +39,7 @@ import { isSiteCode, parseSite, SITES, siteLabel, sitesForValue } from "./sites"
 import { MAX_TAG_SUGGESTIONS, parseTags, parseTagSuggestions } from "./tag-suggestions";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { type GearImageItem, type GearImageSyncOptions, serveGearImage, syncGearImages } from "./gear-assets";
+import { fillAboutCollection } from "./about-collection";
 
 // Supported widths for public image transforms
 const ALLOWED_WIDTHS = new Set([200, 400, 800, 1600]);
@@ -1693,7 +1694,7 @@ app.get("/admin/photos/:id", async (c) => {
                   </select>
                 </label>
               </div>
-              <label class="edit-checkbox"><input name="exclude" type="checkbox" checked={photo.exclude === 1} /> hide from compatibility listings</label>
+              <label class="edit-checkbox"><input name="exclude" type="checkbox" checked={photo.exclude === 1} /> hide from listings and the portfolio</label>
               <button class="edit-submit" type="submit">save changes</button>
               <div id="edit-status" class="edit-status" aria-live="polite"></div>
             </form>
@@ -1985,16 +1986,18 @@ app.patch("/api/admin/photos/bulk", async (c) => {
             ...collectionStatements(c.env.DB, id, publication.collection),
           ];
         });
-      } else if (body.field === "site") {
+      } else if (body.field === "site" || body.field === "exclude") {
         const placeholders = chunk.map(() => "?").join(", ");
-        const { results } = await c.env.DB.prepare(`SELECT id, visibility FROM photos WHERE id IN (${placeholders})`)
-          .bind(...chunk).all<{ id: string; visibility: string }>();
-        statements = results.flatMap(({ id, visibility }) => [
-          c.env.DB.prepare("UPDATE photos SET site = ?, updated_at = datetime('now') WHERE id = ?").bind(value, id),
-          ...(visibility === "public"
-            ? collectionStatements(c.env.DB, id, publicationForVisibility("public", value as string).collection)
-            : []),
-        ]);
+        const { results } = await c.env.DB.prepare(`SELECT id, visibility, site, exclude FROM photos WHERE id IN (${placeholders})`)
+          .bind(...chunk).all<{ id: string; visibility: string; site: string | null; exclude: number }>();
+        statements = results.flatMap((photo) => {
+          const site = body.field === "site" ? (value as string) : photo.site;
+          const exclude = body.field === "exclude" ? (value as number) : photo.exclude;
+          return [
+            c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, photo.id),
+            ...(photo.visibility === "public" ? collectionStatements(c.env.DB, photo.id, publicCollection(site, exclude)) : []),
+          ];
+        });
       } else {
         statements = chunk.map((id) =>
           c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, id),
@@ -2036,9 +2039,9 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
 
-  const current = await c.env.DB.prepare("SELECT visibility, site FROM photos WHERE id = ?")
+  const current = await c.env.DB.prepare("SELECT visibility, site, exclude FROM photos WHERE id = ?")
     .bind(id)
-    .first<{ visibility: string; site: string | null }>();
+    .first<{ visibility: string; site: string | null; exclude: number }>();
   if (!current) return c.json({ error: "Photo not found" }, 404);
 
   if ("site" in body) {
@@ -2059,9 +2062,12 @@ app.patch("/api/admin/photos/:id", async (c) => {
     const publication = publicationForVisibility(body.visibility as Visibility, site);
     body.exclude = publication.exclude;
     collectionChange = collectionStatements(c.env.DB, id, publication.collection);
-  } else if (site !== current.site && (body.visibility ?? current.visibility) === "public") {
-    // Public photos join the kylies.photos portfolio only when shown there.
-    collectionChange = collectionStatements(c.env.DB, id, publicationForVisibility("public", site).collection);
+  } else if ((body.visibility ?? current.visibility) === "public") {
+    // Public photos join the kylies.photos portfolio only when shown there and not hidden.
+    const exclude = "exclude" in body ? (body.exclude ? 1 : 0) : current.exclude;
+    if (site !== current.site || exclude !== current.exclude) {
+      collectionChange = collectionStatements(c.env.DB, id, publicCollection(site, exclude));
+    }
   }
 
   const allowedFields = [
@@ -3013,6 +3019,13 @@ function getOpenApiSpec(baseUrl: string): object {
 export class GearAssets extends WorkerEntrypoint<Env> {
   async syncGearImages(items: GearImageItem[], options?: GearImageSyncOptions) {
     return syncGearImages(this.env, items, options);
+  }
+}
+
+/** RPC entrypoint for climb-log's nightly sync. Only reachable through a service binding. */
+export class PhotoCollections extends WorkerEntrypoint<Env> {
+  async fillAboutCollection(options?: { dryRun?: boolean }) {
+    return fillAboutCollection(this.env.DB, options);
   }
 }
 
