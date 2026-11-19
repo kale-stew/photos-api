@@ -1,11 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * Give blog photos real captions and drop leftover `{WxH}` size hints.
- *
- * Blog imports stored the post's caption sentence as the photo title. For an active blog photo
- * with no caption, the title is copied into the caption (the title is kept, so nothing is lost;
- * shorten it in admin). Size hints are stripped from titles and captions on every photo.
- * A caption that already exists is never replaced.
+ * Drop leftover `{WxH}` size hints from photo titles and captions. Blog captions themselves are
+ * filled from post text by `apply-metadata.ts`.
  *
  * Dry run (default): writes a manifest and prints its approval digest.
  * Apply: requires --apply and --approve=<manifest-sha256>. Every write is a compare-and-set on
@@ -24,7 +20,6 @@ const SIZE_HINT = /\s*\{\d+x\d+\}\s*$/;
 
 export interface CaptionRow {
   id: string;
-  source: string | null;
   title: string | null;
   caption: string | null;
 }
@@ -53,13 +48,9 @@ export function planCaptions(rows: CaptionRow[]): CaptionManifest {
   for (const row of rows) {
     const reasons: string[] = [];
     const title = stripSizeHint(row.title);
-    let caption = stripSizeHint(row.caption?.trim() ? row.caption : null);
-    if (title !== row.title) reasons.push("size hint removed from title");
-    if (caption !== (row.caption?.trim() ? row.caption : null)) reasons.push("size hint removed from caption");
-    if (row.source === "blog" && !caption && title) {
-      caption = title;
-      reasons.push("blog caption copied from title");
-    }
+    const caption = stripSizeHint(row.caption);
+    if (title !== row.title) reasons.push(SIZE_HINT.test(row.title ?? "") ? "size hint removed from title" : "whitespace trimmed from title");
+    if (caption !== row.caption) reasons.push(SIZE_HINT.test(row.caption ?? "") ? "size hint removed from caption" : "whitespace trimmed from caption");
     if (reasons.length === 0) continue;
     entries.push({ id: row.id, from: { title: row.title, caption: row.caption }, to: { title, caption }, reasons });
   }
@@ -79,7 +70,7 @@ export function captionSql(entry: CaptionEntry): string {
     RETURNING id`;
 }
 
-const ROWS_SQL = "SELECT id, source, title, caption FROM photos WHERE status = 'active' ORDER BY id";
+const ROWS_SQL = "SELECT id, title, caption FROM photos WHERE status = 'active' ORDER BY id";
 
 function argument(name: string): string | undefined {
   const prefix = `--${name}=`;

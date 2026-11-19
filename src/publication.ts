@@ -26,6 +26,8 @@ export const FEATURE_COLLECTIONS = [
   { slug: "about", label: "About rotation", description: "Rotates on the kylies.photos about page" },
 ] as const;
 export type FeatureSlug = (typeof FEATURE_COLLECTIONS)[number]["slug"];
+/** SQL list of feature slugs, for queries that treat feature collections differently. */
+export const FEATURE_SLUGS_SQL = FEATURE_COLLECTIONS.map(({ slug }) => `'${slug}'`).join(", ");
 
 export const PUBLICATIONS: Record<PublicationAction, Publication> = {
   portfolio: { visibility: "public", exclude: 0, collection: "portfolio" },
@@ -82,6 +84,7 @@ export function planPublication(
     const wanted = features?.[slug];
     if (typeof wanted !== "boolean" || wanted === members.has(slug)) continue;
     if (wanted && next.status !== "active") return { publication, features: [], error: "Activate the photo before featuring it" };
+    if (wanted && next.visibility === "private") return { publication, features: [], error: "Private photos cannot be featured" };
     changes.push({ slug, on: wanted });
   }
   return { publication, features: changes };

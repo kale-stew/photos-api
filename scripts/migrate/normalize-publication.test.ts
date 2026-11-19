@@ -8,6 +8,7 @@ const row = (overrides: Partial<PublicationRow>): PublicationRow => ({
   visibility: "public",
   exclude: 0,
   site: "climb-log",
+  status: "active",
   in_portfolio: 1,
   in_editorial: 0,
   ...overrides,
@@ -25,24 +26,31 @@ test("consistent photos produce no changes", () => {
 
 test("public but hidden becomes Link-only", () => {
   const [entry] = planNormalization([row({ exclude: 1, in_portfolio: 0 })]).entries;
-  assert.deepEqual(entry.to, { visibility: "unlisted", exclude: 1, portfolio: false, editorial: true });
+  assert.deepEqual(entry.to, { visibility: "unlisted", exclude: 1, site: "climb-log", status: "active", portfolio: false, editorial: true });
   assert.equal(entry.reason, "public but hidden → Link-only");
 });
 
 test("a Listed photo outside the portfolio joins it and leaves editorial", () => {
   const [entry] = planNormalization([row({ in_portfolio: 0, in_editorial: 1 })]).entries;
-  assert.deepEqual(entry.to, { visibility: "public", exclude: 0, portfolio: true, editorial: false });
+  assert.deepEqual(entry.to, { visibility: "public", exclude: 0, site: "climb-log", status: "active", portfolio: true, editorial: false });
 });
 
 test("Link-only photos leave the portfolio and get exclude = 1", () => {
   const [entry] = planNormalization([row({ visibility: "unlisted", exclude: 0, in_portfolio: 1 })]).entries;
-  assert.deepEqual(entry.to, { visibility: "unlisted", exclude: 1, portfolio: false, editorial: true });
+  assert.deepEqual(entry.to, { visibility: "unlisted", exclude: 1, site: "climb-log", status: "active", portfolio: false, editorial: true });
 });
 
-test("SQL touches only managed collections and quotes ids", () => {
+test("SQL is a compare-and-set on the planned state and touches only managed collections", () => {
   const [entry] = planNormalization([row({ id: "o'brien", exclude: 1, in_portfolio: 0 })]).entries;
   const sql = normalizationSql(entry);
-  assert.match(sql, /WHERE id = 'o''brien'/);
-  assert.match(sql, /collection_slug IN \('portfolio', 'kylies-photos-content'\)/);
+  assert.match(sql, /WHERE id = 'o''brien' AND visibility = 'public' AND exclude = 1 AND site IS 'climb-log' AND status = 'active'\s+RETURNING id/);
+  assert.match(sql, /collection_slug IN \('portfolio', 'kylies-photos-content'\) AND EXISTS \(SELECT 1 FROM photos WHERE id = 'o''brien' AND visibility = 'unlisted'/);
+  assert.match(sql, /SELECT 'o''brien', 'kylies-photos-content' WHERE EXISTS/);
   assert.doesNotMatch(sql, /'about'/);
+});
+
+test("inactive public-but-hidden photos become Link-only without collection changes", () => {
+  const [entry] = planNormalization([row({ status: "quarantined", exclude: 1, in_portfolio: 0 })]).entries;
+  assert.equal(entry.to.visibility, "unlisted");
+  assert.doesNotMatch(normalizationSql(entry), /photo_collections/);
 });

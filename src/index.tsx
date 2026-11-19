@@ -28,6 +28,7 @@ import { matchExistingLocation, matchExistingLocationText } from "./location-mat
 import {
   collectionStatements,
   FEATURE_COLLECTIONS,
+  FEATURE_SLUGS_SQL,
   featureStatements,
   PUBLICATIONS,
   planPublication,
@@ -1044,7 +1045,7 @@ app.get("/api/collections/:slug/photos", async (c) => {
   const where = `
     WHERE pc.collection_slug = ?
       AND p.status = 'active'
-      AND (p.visibility = 'public' OR (p.visibility = 'unlisted' AND pc.collection_slug != 'portfolio'))
+      AND (p.visibility = 'public' OR (p.visibility = 'unlisted' AND pc.collection_slug IN (${FEATURE_SLUGS_SQL})))
       ${search.sql}`;
   const [result, count] = await Promise.all([
     c.env.DB.prepare(`
@@ -1283,7 +1284,7 @@ app.get("/admin/", async (c) => {
         </fieldset>
         <fieldset class="action-group" disabled>
           <legend>set a property</legend>
-          <select id="bulk-field" aria-label="property"><option value="">choose…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option><option value="status">status</option></select>
+          <select id="bulk-field" aria-label="property"><option value="">choose…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option></select>
           <input id="bulk-value" placeholder="new value" aria-label="new value" />
           <button id="apply-property" type="button">set</button>
         </fieldset>
@@ -1751,8 +1752,11 @@ app.get("/admin/photos/:id", async (c) => {
                   site: data.getAll('site').map(String),
                   status: String(data.get('status')),
                   visibility: String(data.get('visibility')),
+                  // Only boxes toggled on this page, so a stale tab never undoes a change made elsewhere.
                   features: Object.fromEntries(
-                    [...form.querySelectorAll('input[name="feature"]')].map((input) => [input.value, input.checked]),
+                    [...form.querySelectorAll('input[name="feature"]')]
+                      .filter((input) => input.checked !== input.defaultChecked)
+                      .map((input) => [input.value, input.checked]),
                   ),
                 };
                 try {
@@ -1776,6 +1780,7 @@ app.get("/admin/photos/:id", async (c) => {
                     }
                     climbSelect.dataset.initial = climbId;
                   }
+                  for (const input of form.querySelectorAll('input[name="feature"]')) input.defaultChecked = input.checked;
                   status.textContent = 'Saved';
                   status.classList.add('saved');
                 } catch (error) {
@@ -1986,12 +1991,12 @@ app.patch("/api/admin/photos/bulk", async (c) => {
     : [];
   if (ids.length === 0 || ids.length > 100) return c.json({ error: "Select between 1 and 100 photos" }, 400);
   if (typeof body.field === "string") {
-    const fields = new Set(["title", "caption", "location", "date", "tags", "site", "status", "visibility"]);
+    // Status changes go through the activate and quarantine actions, which recompute membership.
+    const fields = new Set(["title", "caption", "location", "date", "tags", "site", "visibility"]);
     if (!fields.has(body.field)) return c.json({ error: "Invalid property" }, 400);
     if (body.value !== null && typeof body.value !== "string") return c.json({ error: "Property value must be text" }, 400);
     let value: string | null = body.value;
     if (typeof value === "string" && value.length > 2000) return c.json({ error: "Property value is too long" }, 400);
-    if (body.field === "status" && !["active", "quarantined"].includes(String(value))) return c.json({ error: "Invalid status" }, 400);
     if (body.field === "visibility" && !VISIBILITIES.includes(value as Visibility)) return c.json({ error: "Invalid visibility" }, 400);
     if (body.field === "site") {
       value = parseSite(value);
@@ -2008,11 +2013,11 @@ app.patch("/api/admin/photos/bulk", async (c) => {
           const visibility = body.field === "visibility" ? (value as Visibility) : photo.visibility;
           const site = body.field === "site" ? value : photo.site;
           const publication = publicationFor(visibility, site, photo.status);
-          return [
-            c.env.DB.prepare("UPDATE photos SET visibility = ?, site = ?, exclude = ?, updated_at = datetime('now') WHERE id = ?")
-              .bind(visibility, site, publication.exclude, photo.id),
-            ...collectionStatements(c.env.DB, photo.id, publication.collection),
-          ];
+          const update = body.field === "visibility"
+            ? c.env.DB.prepare("UPDATE photos SET visibility = ?, exclude = ?, updated_at = datetime('now') WHERE id = ?")
+              .bind(visibility, publication.exclude, photo.id)
+            : c.env.DB.prepare("UPDATE photos SET site = ?, updated_at = datetime('now') WHERE id = ?").bind(site, photo.id);
+          return [update, ...collectionStatements(c.env.DB, photo.id, publication.collection)];
         });
       } else {
         statements = chunk.map((id) =>
@@ -2059,12 +2064,16 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
 
-  const current = await c.env.DB.prepare("SELECT visibility, site, status FROM photos WHERE id = ?")
+  const current = await c.env.DB.prepare("SELECT visibility, site, status, exclude FROM photos WHERE id = ?")
     .bind(id)
-    .first<{ visibility: Visibility; site: string | null; status: string }>();
+    .first<{ visibility: Visibility; site: string | null; status: string; exclude: number }>();
   if (!current) return c.json({ error: "Photo not found" }, 404);
 
-  // `exclude` always follows visibility; it is not editable on its own.
+  // `exclude` always follows visibility; it is not editable on its own. An admin page from before
+  // that change still sends the old hide checkbox; refuse a toggle rather than silently ignore it.
+  if ("exclude" in body && Number(Boolean(body.exclude)) !== current.exclude) {
+    return c.json({ error: "Reload this page: hiding a photo is now the Link-only visibility" }, 409);
+  }
   delete body.exclude;
   if ("visibility" in body && !VISIBILITIES.includes(body.visibility)) return c.json({ error: "Invalid visibility" }, 400);
   if ("status" in body && !["active", "quarantined"].includes(body.status)) return c.json({ error: "Invalid status" }, 400);

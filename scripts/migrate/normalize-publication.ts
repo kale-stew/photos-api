@@ -6,9 +6,12 @@
  * judgment call: a public photo with `exclude = 1` was hidden on purpose, so it becomes
  * Link-only rather than Listed. Feature collections such as `about` are never touched.
  *
+ * Inactive photos only get the visibility and exclude fix; they cannot join collections.
+ *
  * Dry run (default): writes a manifest of changes and prints its approval digest.
- * Apply: requires --apply and --approve=<manifest-sha256>. Each photo is re-read first and
- * skipped if it changed since the plan, so the script is safe to rerun.
+ * Apply: requires --apply and --approve=<manifest-sha256>. Every write is a compare-and-set on
+ * the planned state (visibility, exclude, site, status), and collection changes run only when
+ * the photo is in the target state, so an admin edit made during the run always wins.
  */
 
 import { createHash } from "node:crypto";
@@ -27,6 +30,7 @@ export interface PublicationRow {
   visibility: Visibility;
   exclude: number;
   site: string | null;
+  status: string;
   in_portfolio: number;
   in_editorial: number;
 }
@@ -34,6 +38,8 @@ export interface PublicationRow {
 export interface PublicationSnapshot {
   visibility: Visibility;
   exclude: number;
+  site: string | null;
+  status: string;
   portfolio: boolean;
   editorial: boolean;
 }
@@ -54,7 +60,14 @@ export interface NormalizationManifest {
 }
 
 function snapshot(row: PublicationRow): PublicationSnapshot {
-  return { visibility: row.visibility, exclude: row.exclude, portfolio: row.in_portfolio === 1, editorial: row.in_editorial === 1 };
+  return {
+    visibility: row.visibility,
+    exclude: row.exclude,
+    site: row.site,
+    status: row.status,
+    portfolio: row.in_portfolio === 1,
+    editorial: row.in_editorial === 1,
+  };
 }
 
 /** Active photos whose stored state differs from what their visibility implies. */
@@ -64,12 +77,16 @@ export function planNormalization(rows: PublicationRow[]): NormalizationManifest
     const from = snapshot(row);
     const hidden = row.visibility === "public" && row.exclude === 1;
     const visibility: Visibility = hidden ? "unlisted" : row.visibility;
-    const publication = publicationFor(visibility, row.site);
+    const publication = publicationFor(visibility, row.site, row.status);
+    const active = row.status === "active";
     const to: PublicationSnapshot = {
       visibility,
       exclude: publication.exclude,
-      portfolio: publication.collection === "portfolio",
-      editorial: publication.collection === "kylies-photos-content",
+      site: row.site,
+      status: row.status,
+      // Inactive photos keep their memberships; reactivation recomputes them.
+      portfolio: active ? publication.collection === "portfolio" : from.portfolio,
+      editorial: active ? publication.collection === "kylies-photos-content" : from.editorial,
     };
     if (JSON.stringify(from) === JSON.stringify(to)) continue;
     const reason = hidden
@@ -90,23 +107,40 @@ function sqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-/** Statements for one photo, in one D1 request. */
+function sqlValue(value: string | number | null): string {
+  if (value === null) return "NULL";
+  return typeof value === "number" ? String(value) : sqlString(value);
+}
+
+/**
+ * Statements for one photo, sent as one D1 batch. The UPDATE only matches the planned starting
+ * state; collection changes only run once the photo is in the target state.
+ */
 export function normalizationSql(entry: NormalizationEntry): string {
   const id = sqlString(entry.id);
+  const { from, to } = entry;
+  const target = `EXISTS (SELECT 1 FROM photos WHERE id = ${id} AND visibility = ${sqlValue(to.visibility)} AND exclude = ${to.exclude} AND site IS ${sqlValue(to.site)} AND status = 'active')`;
   const statements = [
-    `UPDATE photos SET visibility = ${sqlString(entry.to.visibility)}, exclude = ${entry.to.exclude}, updated_at = datetime('now') WHERE id = ${id}`,
-    `DELETE FROM photo_collections WHERE photo_id = ${id} AND collection_slug IN ('portfolio', 'kylies-photos-content')`,
+    `UPDATE photos SET visibility = ${sqlValue(to.visibility)}, exclude = ${to.exclude}, updated_at = datetime('now')
+      WHERE id = ${id} AND visibility = ${sqlValue(from.visibility)} AND exclude = ${from.exclude} AND site IS ${sqlValue(from.site)} AND status = ${sqlValue(from.status)}
+      RETURNING id`,
   ];
-  if (entry.to.portfolio) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) VALUES (${id}, 'portfolio')`);
-  if (entry.to.editorial) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) VALUES (${id}, 'kylies-photos-content')`);
+  if (to.status === "active") {
+    statements.push(
+      `DELETE FROM photo_collections WHERE photo_id = ${id} AND collection_slug IN ('portfolio', 'kylies-photos-content') AND ${target}`,
+    );
+    if (to.portfolio) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) SELECT ${id}, 'portfolio' WHERE ${target}`);
+    if (to.editorial) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) SELECT ${id}, 'kylies-photos-content' WHERE ${target}`);
+  }
   return statements.join(";\n");
 }
 
 const ROWS_SQL = `
   SELECT p.id, p.title, p.visibility, p.exclude, p.site,
     EXISTS(SELECT 1 FROM photo_collections pc WHERE pc.photo_id = p.id AND pc.collection_slug = 'portfolio') AS in_portfolio,
-    EXISTS(SELECT 1 FROM photo_collections pc WHERE pc.photo_id = p.id AND pc.collection_slug = 'kylies-photos-content') AS in_editorial
-  FROM photos p WHERE p.status = 'active' ORDER BY p.id`;
+    EXISTS(SELECT 1 FROM photo_collections pc WHERE pc.photo_id = p.id AND pc.collection_slug = 'kylies-photos-content') AS in_editorial,
+    p.status
+  FROM photos p ORDER BY p.id`;
 
 interface Options {
   manifest: string;
@@ -124,13 +158,18 @@ function sha256(value: Buffer | string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function query<T>(databaseId: string, sql: string): T[] {
+/** Results of every statement in one D1 request. */
+function queryAll(databaseId: string, sql: string): unknown[][] {
   const output = execFileSync("cf", ["d1", "query", databaseId, "--sql", sql], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 64 * 1024 * 1024,
   });
-  return (JSON.parse(output)[0]?.results || []) as T[];
+  return (JSON.parse(output) as Array<{ results?: unknown[] }>).map((result) => result.results ?? []);
+}
+
+function query<T>(databaseId: string, sql: string): T[] {
+  return (queryAll(databaseId, sql)[0] ?? []) as T[];
 }
 
 async function apply(options: Options, databaseId: string): Promise<void> {
@@ -140,25 +179,20 @@ async function apply(options: Options, databaseId: string): Promise<void> {
   const manifest = JSON.parse(bytes.toString("utf8")) as NormalizationManifest;
   if (manifest.version !== 1) throw new Error("Unknown manifest version; plan again");
 
-  const live = new Map(query<PublicationRow>(databaseId, ROWS_SQL).map((row) => [row.id, snapshot(row)]));
-  const outcome = { applied: 0, already: 0, stale: [] as string[] };
+  const outcome = { applied: 0, skippedBecauseChanged: [] as string[], failed: [] as { id: string; error: string }[] };
   for (const entry of manifest.entries) {
-    const current = live.get(entry.id);
-    if (current && JSON.stringify(current) === JSON.stringify(entry.to)) {
-      outcome.already++;
-      continue;
+    try {
+      const [update] = queryAll(databaseId, normalizationSql(entry));
+      if (update?.length === 1) outcome.applied++;
+      else outcome.skippedBecauseChanged.push(entry.id);
+    } catch (error) {
+      outcome.failed.push({ id: entry.id, error: error instanceof Error ? error.message : String(error) });
     }
-    if (!current || JSON.stringify(current) !== JSON.stringify(entry.from)) {
-      outcome.stale.push(entry.id);
-      continue;
-    }
-    query(databaseId, normalizationSql(entry));
-    outcome.applied++;
   }
 
   const after = planNormalization(query<PublicationRow>(databaseId, ROWS_SQL));
   console.log(JSON.stringify({ ...outcome, remaining: after.entries.length }, null, 2));
-  if (outcome.stale.length > 0) process.exitCode = 1;
+  if (outcome.failed.length > 0) process.exitCode = 1;
 }
 
 async function main(): Promise<void> {

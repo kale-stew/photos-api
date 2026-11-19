@@ -70,3 +70,8 @@ test("an inactive photo cannot be featured", () => {
 test("moving a Listed photo to kylieis.online only leaves the portfolio", () => {
   assert.equal(planPublication(listed, { ...listed, site: "kylieis-online" }, new Set(["portfolio"]), undefined).publication?.collection, null);
 });
+
+test("a private photo cannot be featured", () => {
+  const priv = { ...listed, visibility: "private" } as const;
+  assert.match(planPublication(priv, priv, new Set(), { about: true }).error ?? "", /Private/);
+});
