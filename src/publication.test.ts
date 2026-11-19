@@ -6,6 +6,7 @@ test("hidden public photos stay out of the portfolio", () => {
   assert.equal(publicCollection("climb-log", 0), "portfolio");
   assert.equal(publicCollection("both", 1), null);
   assert.equal(publicCollection("kylieis-online", 0), null);
+  assert.equal(publicCollection("climb-log", 0, "quarantined"), null);
 });
 
 test("making a photo public lists it in the portfolio", () => {

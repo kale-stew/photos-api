@@ -5,6 +5,8 @@ INSERT INTO collections (slug, title, description, is_public) VALUES
 
 -- Seed with today's tagged photos; climb-log's nightly sync adds new ones through
 -- the PhotoCollections RPC entrypoint using the same rule (src/about-collection.ts).
+-- Legacy comma-separated tags are not JSON and are skipped here; the first nightly fill
+-- adds them (production has none).
 INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug)
 SELECT p.id, 'about'
 FROM photos p

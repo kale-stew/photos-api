@@ -28,9 +28,10 @@ export function publicationForVisibility(visibility: Visibility, site: string | 
 /**
  * The managed collection for a public photo. Hidden photos (`exclude = 1`) stay out of the
  * portfolio so they can be listed only in hand-picked collections such as `about`.
+ * Inactive photos cannot join a collection (`photo_collections_require_active_photo`).
  */
-export function publicCollection(site: string | null, exclude: number): string | null {
-  return site === "kylieis-online" || exclude ? null : "portfolio";
+export function publicCollection(site: string | null, exclude: number, status = "active"): string | null {
+  return site === "kylieis-online" || exclude || status !== "active" ? null : "portfolio";
 }
 
 /** Replace managed collection membership; other collections are left alone. */

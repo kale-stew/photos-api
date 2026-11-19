@@ -1702,7 +1702,12 @@ app.get("/admin/photos/:id", async (c) => {
               ${CLIMB_FILTER_SCRIPT}
               const climbSelect = document.getElementById('climb-id');
               attachClimbFilter(document.getElementById('climb-search'), climbSelect);
-              document.getElementById('metadata-form').addEventListener('submit', async (event) => {
+              const metadataForm = document.getElementById('metadata-form');
+              // Show the hide state a visibility change implies; check it again to publish a photo hidden.
+              metadataForm.elements.visibility.addEventListener('change', (event) => {
+                metadataForm.elements.exclude.checked = event.target.value !== 'public';
+              });
+              metadataForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const form = event.currentTarget;
                 const button = form.querySelector('button');
@@ -1744,6 +1749,7 @@ app.get("/admin/photos/:id", async (c) => {
                     }
                     climbSelect.dataset.initial = climbId;
                   }
+                  form.elements.exclude.checked = result.exclude === 1;
                   status.textContent = 'Saved';
                   status.classList.add('saved');
                 } catch (error) {
@@ -1988,14 +1994,16 @@ app.patch("/api/admin/photos/bulk", async (c) => {
         });
       } else if (body.field === "site" || body.field === "exclude") {
         const placeholders = chunk.map(() => "?").join(", ");
-        const { results } = await c.env.DB.prepare(`SELECT id, visibility, site, exclude FROM photos WHERE id IN (${placeholders})`)
-          .bind(...chunk).all<{ id: string; visibility: string; site: string | null; exclude: number }>();
+        const { results } = await c.env.DB.prepare(`SELECT id, visibility, site, exclude, status FROM photos WHERE id IN (${placeholders})`)
+          .bind(...chunk).all<{ id: string; visibility: string; site: string | null; exclude: number; status: string }>();
         statements = results.flatMap((photo) => {
           const site = body.field === "site" ? (value as string) : photo.site;
           const exclude = body.field === "exclude" ? (value as number) : photo.exclude;
           return [
             c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, photo.id),
-            ...(photo.visibility === "public" ? collectionStatements(c.env.DB, photo.id, publicCollection(site, exclude)) : []),
+            ...(photo.visibility === "public" && photo.status === "active"
+              ? collectionStatements(c.env.DB, photo.id, publicCollection(site, exclude))
+              : []),
           ];
         });
       } else {
@@ -2039,10 +2047,11 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
 
-  const current = await c.env.DB.prepare("SELECT visibility, site, exclude FROM photos WHERE id = ?")
+  const current = await c.env.DB.prepare("SELECT visibility, site, exclude, status FROM photos WHERE id = ?")
     .bind(id)
-    .first<{ visibility: string; site: string | null; exclude: number }>();
+    .first<{ visibility: string; site: string | null; exclude: number; status: string }>();
   if (!current) return c.json({ error: "Photo not found" }, 404);
+  const status: string = typeof body.status === "string" ? body.status : current.status;
 
   if ("site" in body) {
     const site = parseSite(body.site);
@@ -2060,9 +2069,16 @@ app.patch("/api/admin/photos/:id", async (c) => {
     ["public", "unlisted", "private"].includes(body.visibility)
   ) {
     const publication = publicationForVisibility(body.visibility as Visibility, site);
-    body.exclude = publication.exclude;
-    collectionChange = collectionStatements(c.env.DB, id, publication.collection);
-  } else if ((body.visibility ?? current.visibility) === "public") {
+    if (body.visibility === "public") {
+      // The edit form resets the hide box when visibility changes, so an explicit value is intended.
+      const exclude = "exclude" in body ? (body.exclude ? 1 : 0) : publication.exclude;
+      body.exclude = exclude;
+      collectionChange = collectionStatements(c.env.DB, id, publicCollection(site, exclude, status));
+    } else {
+      body.exclude = publication.exclude;
+      collectionChange = collectionStatements(c.env.DB, id, publication.collection);
+    }
+  } else if ((body.visibility ?? current.visibility) === "public" && status === "active") {
     // Public photos join the kylies.photos portfolio only when shown there and not hidden.
     const exclude = "exclude" in body ? (body.exclude ? 1 : 0) : current.exclude;
     if (site !== current.site || exclude !== current.exclude) {
