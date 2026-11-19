@@ -1,11 +1,11 @@
 /**
- * The `about` collection feeds the kylies.photos about-page rotation. Every public
- * kylies.photos photo tagged `kylie` joins it, including photos hidden from listings,
- * which is how a photo can rotate on /about without appearing anywhere else.
+ * The `about` collection feeds the kylies.photos about-page rotation. It is a feature:
+ * any photo that is not private can be added from admin, so a Link-only photo can rotate
+ * on /about without appearing anywhere else.
  *
  * climb-log's nightly sync calls `fillAboutCollection` through the `PhotoCollections`
- * RPC entrypoint. It only adds; to drop a photo from the rotation, remove its tag and
- * its `about` membership.
+ * RPC entrypoint, which adds Listed kylies.photos photos tagged `kylie`. It never removes,
+ * and it skips photos whose About feature was turned off in admin (`collection_opt_outs`).
  */
 
 import { parseTags } from "./tag-suggestions";
@@ -40,6 +40,9 @@ export async function fillAboutCollection(
     db.prepare(`
       SELECT id, tags FROM photos
       WHERE status = 'active' AND visibility = 'public' AND (site = 'climb-log' OR site = 'both')
+        AND NOT EXISTS (
+          SELECT 1 FROM collection_opt_outs o WHERE o.photo_id = photos.id AND o.collection_slug = 'about'
+        )
       ORDER BY date DESC, id
     `).all<AboutCandidate>(),
     db.prepare("SELECT photo_id FROM photo_collections WHERE collection_slug = ?")

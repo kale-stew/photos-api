@@ -25,7 +25,19 @@ import type { FC } from "hono/jsx";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { dateInputValue, profilePhoto, type PhotoProfile, UPLOAD_TYPES } from "./photo-metadata";
 import { matchExistingLocation, matchExistingLocationText } from "./location-matcher";
-import { collectionStatements, PUBLICATIONS, publicCollection, publicationForVisibility, type PublicationAction, type Visibility } from "./publication";
+import {
+  collectionStatements,
+  FEATURE_COLLECTIONS,
+  FEATURE_SLUGS_SQL,
+  featureStatements,
+  PUBLICATIONS,
+  planPublication,
+  publicationFor,
+  type PublicationAction,
+  VISIBILITIES,
+  VISIBILITY_LABELS,
+  type Visibility,
+} from "./publication";
 import {
   exceedsImagesInputLimit,
   IMAGES_INPUT_LIMIT_BYTES,
@@ -606,6 +618,10 @@ const AdminLayout: FC<{ title: string; children: any }> = ({ title, children }) 
         .site-option:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
         .edit-checkbox { display: flex !important; grid-template-columns: auto 1fr; align-items: center; }
         .edit-checkbox input { width: auto; }
+        .edit-hint { margin: calc(var(--space-sm) * -0.5) 0 0; font-size: 0.75rem; color: var(--color-text-muted); }
+        .edit-features { display: grid; gap: var(--space-xs); margin: 0; padding: 0; border: 0; min-width: 0; }
+        .edit-features legend { padding: 0; margin-bottom: var(--space-xs); font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); }
+        .edit-features .edit-hint { margin: 0; }
         .edit-submit { border: 0; border-radius: var(--radius-md); padding: 0.75rem; background: var(--gradient); color: white; font-weight: 700; cursor: pointer; }
         .ai-caption-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
         .ai-caption-button { border: 1px solid var(--color-accent-light); background: var(--color-accent-light); color: var(--color-accent); border-radius: var(--radius-sm); padding: 0.3rem 0.55rem; font: inherit; font-size: 0.7rem; cursor: pointer; }
@@ -1029,7 +1045,7 @@ app.get("/api/collections/:slug/photos", async (c) => {
   const where = `
     WHERE pc.collection_slug = ?
       AND p.status = 'active'
-      AND p.visibility = 'public'
+      AND (p.visibility = 'public' OR (p.visibility = 'unlisted' AND pc.collection_slug IN (${FEATURE_SLUGS_SQL})))
       ${search.sql}`;
   const [result, count] = await Promise.all([
     c.env.DB.prepare(`
@@ -1170,7 +1186,7 @@ app.get("/admin/", async (c) => {
   const countLabel = `${total.toLocaleString("en-US")} ${total === 1 ? "photo" : "photos"}`;
   const tableColumns = [
     ["title", "title"], ["caption", "caption"], ["location", "location"], ["date", "date"],
-    ["tags", "tags"], ["site", "site"], ["source", "source"], [null, "size"], [null, "hidden"],
+    ["tags", "tags"], ["site", "site"], ["source", "source"], [null, "size"],
     ["visibility", "visibility"], ["status", "status"],
   ] as const;
 
@@ -1200,7 +1216,7 @@ app.get("/admin/", async (c) => {
                 <td><input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} /></td>
                 <td><a href={`/admin/photos/${photo.id}`}><img src={`${origin}${versionedImagePath(photo.id, imageVersion(photo), 200)}`} alt={photo.title || "photo"} loading="lazy" /></a></td>
                 <td><a href={`/admin/photos/${photo.id}`}><code>{photo.id}</code></a></td>
-                <td>{photo.title || "—"}</td><td>{photo.caption || "—"}</td><td>{photo.location || "—"}</td><td class="nowrap">{photo.date || "—"}</td><td>{parseTags(photo.tags).join(", ") || "—"}</td><td class="nowrap">{siteLabel(photo.site)}</td><td>{photo.source || "—"}</td><td class="nowrap">{photo.width && photo.height ? `${photo.width}×${photo.height}` : "—"}</td><td>{photo.exclude ? "yes" : "no"}</td><td>{photo.visibility}</td><td>{photo.status}</td>
+                <td>{photo.title || "—"}</td><td>{photo.caption || "—"}</td><td>{photo.location || "—"}</td><td class="nowrap">{photo.date || "—"}</td><td>{parseTags(photo.tags).join(", ") || "—"}</td><td class="nowrap">{siteLabel(photo.site)}</td><td>{photo.source || "—"}</td><td class="nowrap">{photo.width && photo.height ? `${photo.width}×${photo.height}` : "—"}</td><td title={VISIBILITY_LABELS[photo.visibility]?.description}>{VISIBILITY_LABELS[photo.visibility]?.label ?? photo.visibility}</td><td>{photo.status}</td>
               </tr>)}
             </tbody>
           </table>
@@ -1210,7 +1226,7 @@ app.get("/admin/", async (c) => {
           {photos.map((photo) => <article class="photo-card" key={photo.id} data-photo-id={photo.id}>
             <input class="photo-select" type="checkbox" value={photo.id} aria-label={`Select ${photo.title || photo.id}`} />
             <a href={`/admin/photos/${photo.id}`}><img src={`${origin}${versionedImagePath(photo.id, imageVersion(photo), 200)}`} alt={photo.title || "photo"} loading="lazy" /></a>
-            <div class="photo-card-info"><a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a><div class="photo-card-meta">{photo.date || "no date"}{photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}</div><div class="photo-card-tags"><span class="tag">{siteLabel(photo.site)}</span><span class="tag">{photo.visibility}</span><span class="tag">{photo.status}</span></div></div>
+            <div class="photo-card-info"><a href={`/admin/photos/${photo.id}`} class="photo-card-title">{photo.title || "untitled"}</a><div class="photo-card-meta">{photo.date || "no date"}{photo.width && photo.height ? ` · ${photo.width}x${photo.height}` : ""}</div><div class="photo-card-tags"><span class="tag">{siteLabel(photo.site)}</span><span class="tag">{VISIBILITY_LABELS[photo.visibility]?.label ?? photo.visibility}</span><span class="tag">{photo.status}</span></div></div>
             <div class="photo-card-actions"><a href={`/admin/photos/${photo.id}`}>edit</a><button type="button" class="delete-photo" data-photo-id={photo.id}>delete</button></div>
           </article>)}
         </div>
@@ -1247,7 +1263,7 @@ app.get("/admin/", async (c) => {
         </div>
         <div class="filter-group" role="group" aria-label="filters">
           <select name="site" aria-label="site"><option value="">all sites</option>{SITES.map((option) => <option value={option.code} selected={site === option.code}>{option.label}</option>)}</select>
-          <select name="visibility" aria-label="visibility"><option value="">any visibility</option>{['public', 'unlisted', 'private'].map(value => <option value={value} selected={visibility === value}>{value}</option>)}</select>
+          <select name="visibility" aria-label="visibility"><option value="">any visibility</option>{VISIBILITIES.map(value => <option value={value} selected={visibility === value}>{VISIBILITY_LABELS[value].label}</option>)}</select>
           <select name="status" aria-label="status"><option value="">any status</option>{['active', 'quarantined'].map(value => <option value={value} selected={status === value}>{value}</option>)}</select>
           <select name="source" aria-label="source"><option value="">any source</option>{['upload', 'desktop', 'blog', 'flickr', 'cloudflare-images'].map(value => <option value={value} selected={source === value}>{value}</option>)}</select>
         </div>
@@ -1261,14 +1277,14 @@ app.get("/admin/", async (c) => {
           <legend>move or quarantine</legend>
           <select id="bulk-action" aria-label="action">
             <option value="">choose…</option>
-            <optgroup label="publication"><option value="portfolio">Portfolio (public)</option><option value="editorial">Editorial (unlisted)</option><option value="private">Private</option></optgroup>
+            <optgroup label="visibility"><option value="portfolio">Listed</option><option value="editorial">Link-only</option><option value="private">Private</option></optgroup>
             <optgroup label="status"><option value="activate">activate</option><option value="quarantine">quarantine</option></optgroup>
           </select>
           <button id="apply-bulk" type="button">apply</button>
         </fieldset>
         <fieldset class="action-group" disabled>
           <legend>set a property</legend>
-          <select id="bulk-field" aria-label="property"><option value="">choose…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option><option value="status">status</option><option value="exclude">hidden from listings</option></select>
+          <select id="bulk-field" aria-label="property"><option value="">choose…</option><option value="title">title</option><option value="caption">caption</option><option value="location">location</option><option value="date">date</option><option value="tags">tags</option><option value="site">site</option><option value="visibility">visibility</option></select>
           <input id="bulk-value" placeholder="new value" aria-label="new value" />
           <button id="apply-property" type="button">set</button>
         </fieldset>
@@ -1387,10 +1403,9 @@ app.get("/admin/", async (c) => {
             });
             document.getElementById('bulk-field').addEventListener('change', (event) => {
               const field = event.target.value;
-              const options = field === 'visibility' ? [['public','public'],['unlisted','unlisted'],['private','private']] :
+              const options = field === 'visibility' ? [['public','Listed'],['unlisted','Link-only'],['private','Private']] :
                 field === 'status' ? [['active','active'],['quarantined','quarantined']] :
-                field === 'site' ? [['both','both sites'],['climb-log','kylies.photos only'],['kylieis-online','kylieis.online only']] :
-                field === 'exclude' ? [['0','no'],['1','yes']] : null;
+                field === 'site' ? [['both','both sites'],['climb-log','kylies.photos only'],['kylieis-online','kylieis.online only']] : null;
               const current = document.getElementById('bulk-value');
               let next;
               if (options) {
@@ -1459,11 +1474,11 @@ app.get("/admin/upload", async (c) => {
           <div class="upload-help">JPEG, PNG, WebP, or HEIC · 20 MB each · uploads run one at a time</div>
         </div>
         <div class="upload-field">
-          <label for="destination">destination</label>
+          <label for="destination">visibility</label>
           <select id="destination" name="destination">
-            <option value="portfolio">Portfolio — public gallery</option>
-            <option value="editorial" selected>Editorial — unlisted, usable in posts</option>
-            <option value="private">Private — not publicly available</option>
+            <option value="portfolio">Listed — portfolio, recent photos, and anywhere linked</option>
+            <option value="editorial" selected>Link-only — only where linked: posts, trip reports, hikes</option>
+            <option value="private">Private — nowhere</option>
           </select>
         </div>
         <div class="upload-field">
@@ -1661,13 +1676,16 @@ app.get("/admin/photos/:id", async (c) => {
               <div class="edit-row">
                 <label>date<input name="date" type="date" value={photo.date?.slice(0, 10) || dateInputValue(exif?.date_taken as string | null) || ""} /></label>
                 <label>visibility
-                  <select name="visibility">
-                    <option value="public" selected={photo.visibility === "public"}>public</option>
-                    <option value="unlisted" selected={photo.visibility === "unlisted"}>unlisted</option>
-                    <option value="private" selected={photo.visibility === "private"}>private</option>
+                  <select name="visibility" aria-describedby="visibility-hint">
+                    {VISIBILITIES.map((value) => (
+                      <option value={value} selected={photo.visibility === value} data-hint={VISIBILITY_LABELS[value].description}>
+                        {VISIBILITY_LABELS[value].label}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
+              <p id="visibility-hint" class="edit-hint">{VISIBILITY_LABELS[photo.visibility]?.description}</p>
               <label>
                 <span class="ai-caption-row"><span>tags</span><button id="suggest-tags" class="ai-caption-button" type="button">suggest with AI</button></span>
                 <input id="tags-input" name="tags" value={tagsForInput(photo.tags)} placeholder="coast, fog, sunset" />
@@ -1694,7 +1712,16 @@ app.get("/admin/photos/:id", async (c) => {
                   </select>
                 </label>
               </div>
-              <label class="edit-checkbox"><input name="exclude" type="checkbox" checked={photo.exclude === 1} /> hide from listings and the portfolio</label>
+              <fieldset class="edit-features">
+                <legend>features</legend>
+                {FEATURE_COLLECTIONS.map((feature) => (
+                  <label class="edit-checkbox" title={feature.description}>
+                    <input name="feature" type="checkbox" value={feature.slug} checked={collections.results.some((row) => row.collection_slug === feature.slug)} />
+                    {" "}{feature.label}
+                  </label>
+                ))}
+                <p class="edit-hint">Shown even when Link-only. Private photos are never shown.</p>
+              </fieldset>
               <button class="edit-submit" type="submit">save changes</button>
               <div id="edit-status" class="edit-status" aria-live="polite"></div>
             </form>
@@ -1703,9 +1730,8 @@ app.get("/admin/photos/:id", async (c) => {
               const climbSelect = document.getElementById('climb-id');
               attachClimbFilter(document.getElementById('climb-search'), climbSelect);
               const metadataForm = document.getElementById('metadata-form');
-              // Show the hide state a visibility change implies; check it again to publish a photo hidden.
               metadataForm.elements.visibility.addEventListener('change', (event) => {
-                metadataForm.elements.exclude.checked = event.target.value !== 'public';
+                document.getElementById('visibility-hint').textContent = event.target.selectedOptions[0].dataset.hint || '';
               });
               metadataForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -1726,7 +1752,12 @@ app.get("/admin/photos/:id", async (c) => {
                   site: data.getAll('site').map(String),
                   status: String(data.get('status')),
                   visibility: String(data.get('visibility')),
-                  exclude: data.get('exclude') === 'on',
+                  // Only boxes toggled on this page, so a stale tab never undoes a change made elsewhere.
+                  features: Object.fromEntries(
+                    [...form.querySelectorAll('input[name="feature"]')]
+                      .filter((input) => input.checked !== input.defaultChecked)
+                      .map((input) => [input.value, input.checked]),
+                  ),
                 };
                 try {
                   const response = await fetch('/api/admin/photos/${photo.id}', {
@@ -1749,7 +1780,7 @@ app.get("/admin/photos/:id", async (c) => {
                     }
                     climbSelect.dataset.initial = climbId;
                   }
-                  form.elements.exclude.checked = result.exclude === 1;
+                  for (const input of form.querySelectorAll('input[name="feature"]')) input.defaultChecked = input.checked;
                   status.textContent = 'Saved';
                   status.classList.add('saved');
                 } catch (error) {
@@ -1960,53 +1991,33 @@ app.patch("/api/admin/photos/bulk", async (c) => {
     : [];
   if (ids.length === 0 || ids.length > 100) return c.json({ error: "Select between 1 and 100 photos" }, 400);
   if (typeof body.field === "string") {
-    const fields = new Set(["title", "caption", "location", "date", "tags", "site", "status", "visibility", "exclude"]);
+    // Status changes go through the activate and quarantine actions, which recompute membership.
+    const fields = new Set(["title", "caption", "location", "date", "tags", "site", "visibility"]);
     if (!fields.has(body.field)) return c.json({ error: "Invalid property" }, 400);
-    let value: string | number | null;
-    if (body.field === "exclude") {
-      if (![0, 1, "0", "1", false, true].includes(body.value as never)) return c.json({ error: "Exclude must be 0 or 1" }, 400);
-      value = body.value === 1 || body.value === "1" || body.value === true ? 1 : 0;
-    } else {
-      if (body.value !== null && typeof body.value !== "string") return c.json({ error: "Property value must be text" }, 400);
-      value = body.value;
-      if (typeof value === "string" && value.length > 2000) return c.json({ error: "Property value is too long" }, 400);
-      if (body.field === "status" && !["active", "quarantined"].includes(String(value))) return c.json({ error: "Invalid status" }, 400);
-      if (body.field === "visibility" && !["public", "unlisted", "private"].includes(String(value))) return c.json({ error: "Invalid visibility" }, 400);
-      if (body.field === "site") {
-        value = parseSite(value);
-        if (!value) return c.json({ error: "Invalid site" }, 400);
-      }
+    if (body.value !== null && typeof body.value !== "string") return c.json({ error: "Property value must be text" }, 400);
+    let value: string | null = body.value;
+    if (typeof value === "string" && value.length > 2000) return c.json({ error: "Property value is too long" }, 400);
+    if (body.field === "visibility" && !VISIBILITIES.includes(value as Visibility)) return c.json({ error: "Invalid visibility" }, 400);
+    if (body.field === "site") {
+      value = parseSite(value);
+      if (!value) return c.json({ error: "Invalid site" }, 400);
     }
     for (let offset = 0; offset < ids.length; offset += 25) {
       const chunk = ids.slice(offset, offset + 25);
       let statements: D1PreparedStatement[];
-      if (body.field === "visibility") {
+      if (body.field === "visibility" || body.field === "site") {
         const placeholders = chunk.map(() => "?").join(", ");
-        const { results } = await c.env.DB.prepare(`SELECT id, site FROM photos WHERE id IN (${placeholders})`)
-          .bind(...chunk).all<{ id: string; site: string | null }>();
-        statements = results.flatMap(({ id, site }) => {
-          const publication = publicationForVisibility(value as Visibility, site);
-          return [
-            c.env.DB.prepare("UPDATE photos SET visibility = ?, exclude = ?, updated_at = datetime('now') WHERE id = ?")
-              .bind(publication.visibility, publication.exclude, id),
-            ...collectionStatements(c.env.DB, id, publication.collection),
-          ];
-        });
-      } else if (body.field === "site" || body.field === "exclude") {
-        const placeholders = chunk.map(() => "?").join(", ");
-        const { results } = await c.env.DB.prepare(`SELECT id, visibility, site, exclude, status FROM photos WHERE id IN (${placeholders})`)
-          .bind(...chunk).all<{ id: string; visibility: string; site: string | null; exclude: number; status: string }>();
+        const { results } = await c.env.DB.prepare(`SELECT id, visibility, site, status FROM photos WHERE id IN (${placeholders})`)
+          .bind(...chunk).all<{ id: string; visibility: Visibility; site: string | null; status: string }>();
         statements = results.flatMap((photo) => {
-          const site = body.field === "site" ? (value as string) : photo.site;
-          const exclude = body.field === "exclude" ? (value as number) : photo.exclude;
-          const collection = publicCollection(site, exclude);
-          return [
-            c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, photo.id),
-            // Inactive photos can still leave the portfolio, but cannot join it.
-            ...(photo.visibility === "public" && (photo.status === "active" || collection === null)
-              ? collectionStatements(c.env.DB, photo.id, collection)
-              : []),
-          ];
+          const visibility = body.field === "visibility" ? (value as Visibility) : photo.visibility;
+          const site = body.field === "site" ? value : photo.site;
+          const publication = publicationFor(visibility, site, photo.status);
+          const update = body.field === "visibility"
+            ? c.env.DB.prepare("UPDATE photos SET visibility = ?, exclude = ?, updated_at = datetime('now') WHERE id = ?")
+              .bind(visibility, publication.exclude, photo.id)
+            : c.env.DB.prepare("UPDATE photos SET site = ?, updated_at = datetime('now') WHERE id = ?").bind(site, photo.id);
+          return [update, ...collectionStatements(c.env.DB, photo.id, publication.collection)];
         });
       } else {
         statements = chunk.map((id) =>
@@ -2023,22 +2034,26 @@ app.patch("/api/admin/photos/bulk", async (c) => {
   }
 
   for (let offset = 0; offset < ids.length; offset += 25) {
+    const chunk = ids.slice(offset, offset + 25);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const { results } = await c.env.DB.prepare(`SELECT id, visibility, site FROM photos WHERE id IN (${placeholders})`)
+      .bind(...chunk).all<{ id: string; visibility: Visibility; site: string | null }>();
     const statements: D1PreparedStatement[] = [];
-    for (const id of ids.slice(offset, offset + 25)) {
-      if (action === "activate" || action === "quarantine") {
-        statements.push(c.env.DB.prepare("UPDATE photos SET status = ?, updated_at = datetime('now') WHERE id = ?")
-          .bind(action === "activate" ? "active" : "quarantined", id));
+    for (const photo of results) {
+      if (action === "quarantine") {
+        statements.push(c.env.DB.prepare("UPDATE photos SET status = 'quarantined', updated_at = datetime('now') WHERE id = ?").bind(photo.id));
         continue;
       }
-
-      const publication = PUBLICATIONS[action as PublicationAction];
+      // Activating or publishing makes the photo active, so its managed collection is recomputed.
+      const visibility = action === "activate" ? photo.visibility : PUBLICATIONS[action as PublicationAction].visibility;
+      const publication = publicationFor(visibility, photo.site);
       statements.push(
         c.env.DB.prepare("UPDATE photos SET visibility = ?, exclude = ?, status = 'active', updated_at = datetime('now') WHERE id = ?")
-          .bind(publication.visibility, publication.exclude, id),
-        ...collectionStatements(c.env.DB, id, publication.collection),
+          .bind(publication.visibility, publication.exclude, photo.id),
+        ...collectionStatements(c.env.DB, photo.id, publication.collection),
       );
     }
-    await c.env.DB.batch(statements);
+    if (statements.length > 0) await c.env.DB.batch(statements);
   }
 
   return c.json({ updated: ids.length, action });
@@ -2049,46 +2064,44 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
 
-  const current = await c.env.DB.prepare("SELECT visibility, site, exclude, status FROM photos WHERE id = ?")
+  const current = await c.env.DB.prepare("SELECT visibility, site, status, exclude FROM photos WHERE id = ?")
     .bind(id)
-    .first<{ visibility: string; site: string | null; exclude: number; status: string }>();
+    .first<{ visibility: Visibility; site: string | null; status: string; exclude: number }>();
   if (!current) return c.json({ error: "Photo not found" }, 404);
-  const status: string = typeof body.status === "string" ? body.status : current.status;
 
+  // `exclude` always follows visibility; it is not editable on its own. An admin page from before
+  // that change still sends the old hide checkbox; refuse a toggle rather than silently ignore it.
+  if ("exclude" in body && Number(Boolean(body.exclude)) !== current.exclude) {
+    return c.json({ error: "Reload this page: hiding a photo is now the Link-only visibility" }, 409);
+  }
+  delete body.exclude;
+  if ("visibility" in body && !VISIBILITIES.includes(body.visibility)) return c.json({ error: "Invalid visibility" }, 400);
+  if ("status" in body && !["active", "quarantined"].includes(body.status)) return c.json({ error: "Invalid status" }, 400);
   if ("site" in body) {
     const site = parseSite(body.site);
     if (!site) return c.json({ error: "Choose at least one site" }, 400);
     body.site = site;
   }
+  const visibility: Visibility = body.visibility ?? current.visibility;
   const site: string | null = "site" in body ? body.site : current.site;
+  const status: string = body.status ?? current.status;
 
-  // A visibility change moves the photo between collections like the bulk actions do,
-  // so a photo can't end up public while listed only in a private collection.
+  const { results: memberships } = await c.env.DB.prepare("SELECT collection_slug FROM photo_collections WHERE photo_id = ?")
+    .bind(id).all<{ collection_slug: string }>();
+  const plan = planPublication(
+    current,
+    { visibility, site, status },
+    new Set(memberships.map(({ collection_slug }) => collection_slug)),
+    body.features && typeof body.features === "object" ? body.features : undefined,
+  );
+  if (plan.error) return c.json({ error: plan.error }, 400);
   let collectionChange: D1PreparedStatement[] = [];
-  if (
-    "visibility" in body &&
-    body.visibility !== current.visibility &&
-    ["public", "unlisted", "private"].includes(body.visibility)
-  ) {
-    const publication = publicationForVisibility(body.visibility as Visibility, site);
-    if (body.visibility === "public") {
-      // The edit form resets the hide box when visibility changes, so an explicit value is intended.
-      const exclude = "exclude" in body ? (body.exclude ? 1 : 0) : publication.exclude;
-      body.exclude = exclude;
-      collectionChange = collectionStatements(c.env.DB, id, publicCollection(site, exclude, status));
-    } else {
-      body.exclude = publication.exclude;
-      collectionChange = collectionStatements(c.env.DB, id, publication.collection);
-    }
-  } else if ((body.visibility ?? current.visibility) === "public") {
-    // Public photos join the kylies.photos portfolio only when shown there and not hidden.
-    // Inactive photos can still leave it, but cannot join (photo_collections_require_active_photo).
-    const exclude = "exclude" in body ? (body.exclude ? 1 : 0) : current.exclude;
-    const collection = publicCollection(site, exclude);
-    if ((site !== current.site || exclude !== current.exclude) && (status === "active" || collection === null)) {
-      collectionChange = collectionStatements(c.env.DB, id, collection);
-    }
+  if (plan.publication) {
+    body.exclude = plan.publication.exclude;
+    collectionChange = collectionStatements(c.env.DB, id, plan.publication.collection);
   }
+  // Only changed features are written, because turning one off records an opt-out.
+  const featureChange = plan.features.flatMap(({ slug, on }) => featureStatements(c.env.DB, id, slug, on));
 
   const allowedFields = [
     "title", "location", "date", "tags", "site", "exclude", "caption",
@@ -2101,21 +2114,11 @@ app.patch("/api/admin/photos/:id", async (c) => {
     if (field in body) {
       const value = body[field];
       setClauses.push(`${field} = ?`);
-      if (field === "exclude") {
-        values.push(value ? 1 : 0);
-      } else {
-        if (field === "status" && !["active", "quarantined"].includes(value)) {
-          return c.json({ error: "Invalid status" }, 400);
-        }
-        if (field === "visibility" && !["public", "unlisted", "private"].includes(value)) {
-          return c.json({ error: "Invalid visibility" }, 400);
-        }
-        values.push(value === null ? null : String(value));
-      }
+      values.push(field === "exclude" ? Number(value) : value === null ? null : String(value));
     }
   }
 
-  if (setClauses.length === 0) {
+  if (setClauses.length === 0 && featureChange.length === 0) {
     return c.json({ error: "No valid fields to update" }, 400);
   }
 
@@ -2125,7 +2128,7 @@ app.patch("/api/admin/photos/:id", async (c) => {
   const sql = `UPDATE photos SET ${setClauses.join(", ")} WHERE id = ?`;
 
   try {
-    const [update] = await c.env.DB.batch([c.env.DB.prepare(sql).bind(...values), ...collectionChange]);
+    const [update] = await c.env.DB.batch([c.env.DB.prepare(sql).bind(...values), ...collectionChange, ...featureChange]);
     if (update.meta.changes !== 1) {
       return c.json({ error: "Photo not found" }, 404);
     }
@@ -2400,7 +2403,7 @@ app.post("/api/admin/upload", async (c) => {
   }
 
   if (!Object.hasOwn(PUBLICATIONS, destination)) return c.json({ error: "Invalid destination" }, 400);
-  const publication = publicationForVisibility(PUBLICATIONS[destination as PublicationAction].visibility, site);
+  const publication = publicationFor(PUBLICATIONS[destination as PublicationAction].visibility, site);
 
   // Generate ID and determine format from MIME type
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
@@ -3017,9 +3020,13 @@ function getOpenApiSpec(baseUrl: string): object {
             site: { type: "string", example: "climb-log" },
             source: { type: "string", nullable: true, example: "flickr" },
             tags: { type: "string", nullable: true },
-            exclude: { type: "integer", enum: [0, 1] },
+            exclude: { type: "integer", enum: [0, 1], description: "Legacy; always 0 for public (Listed) photos and 1 otherwise." },
             status: { type: "string", enum: ["active", "quarantined"] },
-            visibility: { type: "string", enum: ["public", "unlisted", "private"] },
+            visibility: {
+              type: "string",
+              enum: ["public", "unlisted", "private"],
+              description: "public = Listed (portfolio and automatic listings), unlisted = Link-only (only where linked or featured), private = not served.",
+            },
             created_at: { type: "string", format: "date-time" },
             updated_at: { type: "string", format: "date-time" },
           },
