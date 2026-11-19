@@ -17,6 +17,7 @@
     "test:local": "API_URL=http://localhost:8787 npx tsx scripts/test-integration.ts",
     "test:metadata": "npx tsx --test src/photo-metadata.test.ts src/location-matcher.test.ts src/publication.test.ts src/transform-source.test.ts src/replace-image.test.ts src/sites.test.ts src/tag-suggestions.test.ts src/gear-image.test.ts src/gear-assets.test.ts src/about-collection.test.ts",
     "test:transform-sources": "npx tsx --test scripts/migrate/backfill-transform-sources.test.ts",
+    "test:normalize": "npx tsx --test scripts/migrate/normalize-publication.test.ts scripts/migrate/normalize-captions.test.ts",
     "transform-sources:plan": "npx tsx scripts/migrate/backfill-transform-sources.ts",
     "transform-sources:apply": "npx tsx scripts/migrate/backfill-transform-sources.ts --apply",
     "exif:local:plan": "npx tsx scripts/migrate/plan-local-exif.ts",

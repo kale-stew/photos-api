@@ -50,15 +50,18 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 - The local Images binding ignores `trim` and cannot run `segment` or raw `rgba` output, so the pipeline crops in JS and segmentation falls back to `needs_review` locally.
 - Superseded versions go to `gear_asset_retired_prefixes` and are deleted after 7 days, R2 first and verified, then the row. Old version URLs 302 to the current one.
 
-## Collections
+## Publication Model
 
-- `portfolio` membership follows publication: a public photo is in it unless it is hidden (`exclude = 1`) or kylieis.online-only (`publicCollection` in `src/publication.ts`). Visibility, site, and hide edits keep it in step.
-- `about` feeds the kylies.photos /about rotation: public kylies.photos photos tagged `kylie`, hidden ones included. climb-log's nightly sync adds new ones through the `PhotoCollections` RPC entrypoint (`src/about-collection.ts`); it never removes. A photo that should rotate on /about and appear nowhere else is public, kylies.photos, hidden, and tagged `kylie`.
-- Collection endpoints filter on visibility, not `exclude`.
+- Visibility is the one publication control, labeled in admin: `public` = **Listed** (portfolio, recent photos, photo pages, automatic hike fallbacks, and anywhere linked), `unlisted` = **Link-only** (only where linked: posts, trip reports, formal hike links, and features), `private` = **Private** (not served). Rules and labels live in `src/publication.ts`.
+- `exclude` is legacy and derived: 0 for Listed, 1 otherwise. Nothing edits it directly; `/api/photos` and kylieis.online still read it.
+- Managed collections follow visibility: Listed kylies.photos photos are in `portfolio`, Link-only photos in `kylies-photos-content`, private and inactive photos in neither. Visibility, site, and reactivation recompute membership; quarantine alone keeps it so a restore brings it back.
+- Features are opt-in collections independent of visibility (`FEATURE_COLLECTIONS`), edited as checkboxes. Any photo that is not private can be featured, so Link-only photos can be featured without being listed. Turning a feature off records a row in `collection_opt_outs` so automatic fills never re-add it; only changed boxes are written.
+- `about` is a feature that feeds the kylies.photos /about rotation. climb-log's nightly sync adds Listed kylies.photos photos tagged `kylie` through the `PhotoCollections` RPC entrypoint (`src/about-collection.ts`), skipping opt-outs; it never removes.
+- Collection endpoints serve Listed photos, plus Link-only photos in feature collections. The portfolio serves Listed photos only.
 
 ## Visibility And References
 
-- Do not treat legacy `exclude` as proof that an image is unused. It historically means hidden from gallery listings, and excluded images may still appear in published content.
+- Do not treat legacy `exclude` or Link-only as proof that an image is unused. Link-only images appear in published content.
 - Resolve all canonical IDs and compatibility aliases before deciding that a photo is unreferenced.
 - Preserve direct image and metadata behavior consistently. Listing filters alone do not make an image private.
 - Destructive scripts must default to dry-run, emit a reviewable manifest, require explicit confirmation, and be safe to rerun.
