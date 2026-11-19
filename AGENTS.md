@@ -50,6 +50,12 @@ Keep Worker behavior in `src/index.tsx` unless a deliberate architecture change 
 - The local Images binding ignores `trim` and cannot run `segment` or raw `rgba` output, so the pipeline crops in JS and segmentation falls back to `needs_review` locally.
 - Superseded versions go to `gear_asset_retired_prefixes` and are deleted after 7 days, R2 first and verified, then the row. Old version URLs 302 to the current one.
 
+## Collections
+
+- `portfolio` membership follows publication: a public photo is in it unless it is hidden (`exclude = 1`) or kylieis.online-only (`publicCollection` in `src/publication.ts`). Visibility, site, and hide edits keep it in step.
+- `about` feeds the kylies.photos /about rotation: public kylies.photos photos tagged `kylie`, hidden ones included. climb-log's nightly sync adds new ones through the `PhotoCollections` RPC entrypoint (`src/about-collection.ts`); it never removes. A photo that should rotate on /about and appear nowhere else is public, kylies.photos, hidden, and tagged `kylie`.
+- Collection endpoints filter on visibility, not `exclude`.
+
 ## Visibility And References
 
 - Do not treat legacy `exclude` as proof that an image is unused. It historically means hidden from gallery listings, and excluded images may still appear in published content.

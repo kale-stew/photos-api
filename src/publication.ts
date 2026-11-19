@@ -21,10 +21,17 @@ export const PUBLICATIONS: Record<PublicationAction, Publication> = {
  * Public photos reserved for kylieis.online stay out of the kylies.photos portfolio.
  */
 export function publicationForVisibility(visibility: Visibility, site: string | null): Publication {
-  if (visibility === "public") {
-    return site === "kylieis-online" ? { ...PUBLICATIONS.portfolio, collection: null } : PUBLICATIONS.portfolio;
-  }
+  if (visibility === "public") return { ...PUBLICATIONS.portfolio, collection: publicCollection(site, 0) };
   return visibility === "unlisted" ? PUBLICATIONS.editorial : PUBLICATIONS.private;
+}
+
+/**
+ * The managed collection for a public photo. Hidden photos (`exclude = 1`) stay out of the
+ * portfolio so they can be listed only in hand-picked collections such as `about`.
+ * Inactive photos cannot join a collection (`photo_collections_require_active_photo`).
+ */
+export function publicCollection(site: string | null, exclude: number, status = "active"): string | null {
+  return site === "kylieis-online" || exclude || status !== "active" ? null : "portfolio";
 }
 
 /** Replace managed collection membership; other collections are left alone. */
