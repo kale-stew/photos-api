@@ -1999,10 +1999,12 @@ app.patch("/api/admin/photos/bulk", async (c) => {
         statements = results.flatMap((photo) => {
           const site = body.field === "site" ? (value as string) : photo.site;
           const exclude = body.field === "exclude" ? (value as number) : photo.exclude;
+          const collection = publicCollection(site, exclude);
           return [
             c.env.DB.prepare(`UPDATE photos SET ${body.field} = ?, updated_at = datetime('now') WHERE id = ?`).bind(value, photo.id),
-            ...(photo.visibility === "public" && photo.status === "active"
-              ? collectionStatements(c.env.DB, photo.id, publicCollection(site, exclude))
+            // Inactive photos can still leave the portfolio, but cannot join it.
+            ...(photo.visibility === "public" && (photo.status === "active" || collection === null)
+              ? collectionStatements(c.env.DB, photo.id, collection)
               : []),
           ];
         });
@@ -2078,11 +2080,13 @@ app.patch("/api/admin/photos/:id", async (c) => {
       body.exclude = publication.exclude;
       collectionChange = collectionStatements(c.env.DB, id, publication.collection);
     }
-  } else if ((body.visibility ?? current.visibility) === "public" && status === "active") {
+  } else if ((body.visibility ?? current.visibility) === "public") {
     // Public photos join the kylies.photos portfolio only when shown there and not hidden.
+    // Inactive photos can still leave it, but cannot join (photo_collections_require_active_photo).
     const exclude = "exclude" in body ? (body.exclude ? 1 : 0) : current.exclude;
-    if (site !== current.site || exclude !== current.exclude) {
-      collectionChange = collectionStatements(c.env.DB, id, publicCollection(site, exclude));
+    const collection = publicCollection(site, exclude);
+    if ((site !== current.site || exclude !== current.exclude) && (status === "active" || collection === null)) {
+      collectionChange = collectionStatements(c.env.DB, id, collection);
     }
   }
 
