@@ -43,3 +43,14 @@ test("a valid manifest has no errors and a field summary", () => {
   assert.deepEqual(validateManifest(manifest), []);
   assert.deepEqual(summarize(manifest), { photos: 1, title: 1, caption: 1, date: 1 });
 });
+
+test("rejects non-text values and missing ids", () => {
+  const errors = validateManifest({
+    version: 1,
+    entries: [
+      { id: "", from: {}, to: {} },
+      { id: "n", from: { date: null }, to: { date: 20210131 as never } },
+    ],
+  });
+  assert.deepEqual(errors, ["an entry has no id", "n: to.date must be text or null", "n: date 20210131 is not YYYY-MM-DD"]);
+});

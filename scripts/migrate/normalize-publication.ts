@@ -54,7 +54,7 @@ export interface NormalizationEntry {
 }
 
 export interface NormalizationManifest {
-  version: 1;
+  version: 2;
   entries: NormalizationEntry[];
   summary: Record<string, number>;
 }
@@ -100,7 +100,7 @@ export function planNormalization(rows: PublicationRow[]): NormalizationManifest
   }
   const summary: Record<string, number> = {};
   for (const entry of entries) summary[entry.reason] = (summary[entry.reason] ?? 0) + 1;
-  return { version: 1, entries, summary };
+  return { version: 2, entries, summary };
 }
 
 function sqlString(value: string): string {
@@ -112,26 +112,29 @@ function sqlValue(value: string | number | null): string {
   return typeof value === "number" ? String(value) : sqlString(value);
 }
 
-/**
- * Statements for one photo, sent as one D1 batch. The UPDATE only matches the planned starting
- * state; collection changes only run once the photo is in the target state.
- */
-export function normalizationSql(entry: NormalizationEntry): string {
+/** The compare-and-set UPDATE: it matches only the planned starting state. */
+export function updateSql(entry: NormalizationEntry): string {
   const id = sqlString(entry.id);
   const { from, to } = entry;
+  return `UPDATE photos SET visibility = ${sqlValue(to.visibility)}, exclude = ${to.exclude}, updated_at = datetime('now')
+    WHERE id = ${id} AND visibility = ${sqlValue(from.visibility)} AND exclude = ${from.exclude} AND site IS ${sqlValue(from.site)} AND status = ${sqlValue(from.status)}
+    RETURNING id`;
+}
+
+/**
+ * Managed-collection changes, which act only while the photo is active and in the target state.
+ * They are idempotent, so they run after every UPDATE attempt; a rerun repairs an interrupted one.
+ */
+export function collectionSql(entry: NormalizationEntry): string | null {
+  const { to } = entry;
+  if (to.status !== "active") return null;
+  const id = sqlString(entry.id);
   const target = `EXISTS (SELECT 1 FROM photos WHERE id = ${id} AND visibility = ${sqlValue(to.visibility)} AND exclude = ${to.exclude} AND site IS ${sqlValue(to.site)} AND status = 'active')`;
   const statements = [
-    `UPDATE photos SET visibility = ${sqlValue(to.visibility)}, exclude = ${to.exclude}, updated_at = datetime('now')
-      WHERE id = ${id} AND visibility = ${sqlValue(from.visibility)} AND exclude = ${from.exclude} AND site IS ${sqlValue(from.site)} AND status = ${sqlValue(from.status)}
-      RETURNING id`,
+    `DELETE FROM photo_collections WHERE photo_id = ${id} AND collection_slug IN ('portfolio', 'kylies-photos-content') AND ${target}`,
   ];
-  if (to.status === "active") {
-    statements.push(
-      `DELETE FROM photo_collections WHERE photo_id = ${id} AND collection_slug IN ('portfolio', 'kylies-photos-content') AND ${target}`,
-    );
-    if (to.portfolio) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) SELECT ${id}, 'portfolio' WHERE ${target}`);
-    if (to.editorial) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) SELECT ${id}, 'kylies-photos-content' WHERE ${target}`);
-  }
+  if (to.portfolio) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) SELECT ${id}, 'portfolio' WHERE ${target}`);
+  if (to.editorial) statements.push(`INSERT OR IGNORE INTO photo_collections (photo_id, collection_slug) SELECT ${id}, 'kylies-photos-content' WHERE ${target}`);
   return statements.join(";\n");
 }
 
@@ -177,14 +180,25 @@ async function apply(options: Options, databaseId: string): Promise<void> {
   const bytes = await readFile(options.manifest);
   if (sha256(bytes) !== options.approve) throw new Error("Manifest approval digest does not match");
   const manifest = JSON.parse(bytes.toString("utf8")) as NormalizationManifest;
-  if (manifest.version !== 1) throw new Error("Unknown manifest version; plan again");
+  if (manifest.version !== 2) throw new Error("Manifest is from an older version of this script; plan again");
 
-  const outcome = { applied: 0, skippedBecauseChanged: [] as string[], failed: [] as { id: string; error: string }[] };
+  const outcome = {
+    applied: 0,
+    alreadyDone: 0,
+    skippedBecauseChanged: [] as string[],
+    failed: [] as { id: string; error: string }[],
+  };
   for (const entry of manifest.entries) {
     try {
-      const [update] = queryAll(databaseId, normalizationSql(entry));
-      if (update?.length === 1) outcome.applied++;
-      else outcome.skippedBecauseChanged.push(entry.id);
+      const updated = query(databaseId, updateSql(entry)).length === 1;
+      const collections = collectionSql(entry);
+      if (collections) query(databaseId, collections);
+      if (updated) outcome.applied++;
+      else {
+        const [now] = query<PublicationRow>(databaseId, `${ROWS_SQL.replace("ORDER BY p.id", "")} WHERE p.id = ${sqlString(entry.id)}`);
+        if (now && JSON.stringify(snapshot(now)) === JSON.stringify(entry.to)) outcome.alreadyDone++;
+        else outcome.skippedBecauseChanged.push(entry.id);
+      }
     } catch (error) {
       outcome.failed.push({ id: entry.id, error: error instanceof Error ? error.message : String(error) });
     }

@@ -40,6 +40,15 @@ export function validateManifest(manifest: MetadataManifest): string[] {
   if (manifest.version !== 1) errors.push("unknown manifest version");
   const seen = new Set<string>();
   for (const entry of manifest.entries) {
+    if (typeof entry.id !== "string" || !entry.id) {
+      errors.push("an entry has no id");
+      continue;
+    }
+    for (const side of ["from", "to"] as const) {
+      for (const [field, value] of Object.entries(entry[side] ?? {})) {
+        if (value !== null && typeof value !== "string") errors.push(`${entry.id}: ${side}.${field} must be text or null`);
+      }
+    }
     if (seen.has(entry.id)) errors.push(`${entry.id}: listed twice`);
     seen.add(entry.id);
     const fields = Object.keys(entry.to);

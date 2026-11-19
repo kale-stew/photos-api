@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizationSql, planNormalization, type PublicationRow } from "./normalize-publication.js";
+import { collectionSql, planNormalization, type PublicationRow, updateSql } from "./normalize-publication.js";
 
 const row = (overrides: Partial<PublicationRow>): PublicationRow => ({
   id: "p1",
@@ -42,8 +42,8 @@ test("Link-only photos leave the portfolio and get exclude = 1", () => {
 
 test("SQL is a compare-and-set on the planned state and touches only managed collections", () => {
   const [entry] = planNormalization([row({ id: "o'brien", exclude: 1, in_portfolio: 0 })]).entries;
-  const sql = normalizationSql(entry);
-  assert.match(sql, /WHERE id = 'o''brien' AND visibility = 'public' AND exclude = 1 AND site IS 'climb-log' AND status = 'active'\s+RETURNING id/);
+  assert.match(updateSql(entry), /WHERE id = 'o''brien' AND visibility = 'public' AND exclude = 1 AND site IS 'climb-log' AND status = 'active'\s+RETURNING id/);
+  const sql = collectionSql(entry) ?? "";
   assert.match(sql, /collection_slug IN \('portfolio', 'kylies-photos-content'\) AND EXISTS \(SELECT 1 FROM photos WHERE id = 'o''brien' AND visibility = 'unlisted'/);
   assert.match(sql, /SELECT 'o''brien', 'kylies-photos-content' WHERE EXISTS/);
   assert.doesNotMatch(sql, /'about'/);
@@ -52,5 +52,5 @@ test("SQL is a compare-and-set on the planned state and touches only managed col
 test("inactive public-but-hidden photos become Link-only without collection changes", () => {
   const [entry] = planNormalization([row({ status: "quarantined", exclude: 1, in_portfolio: 0 })]).entries;
   assert.equal(entry.to.visibility, "unlisted");
-  assert.doesNotMatch(normalizationSql(entry), /photo_collections/);
+  assert.equal(collectionSql(entry), null);
 });
